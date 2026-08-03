@@ -2,6 +2,9 @@
 
 [GitHub source](https://github.com/webscepts123/Noderyx-Framework) · [Issues](https://github.com/webscepts123/Noderyx-Framework/issues)
 
+Releases publish to npm through GitHub OIDC with no long-lived npm token. See
+the [trusted publishing guide](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/PUBLISHING.md).
+
 > Editor icons: after installation, run `npx noderyx editor:install` and reload
 > VS Code. Use `--editor=cursor` or `--editor=vscodium` for those editors. Both
 > `.noderframe` and `.mnoderframe` then share the Noderyx file icon.
