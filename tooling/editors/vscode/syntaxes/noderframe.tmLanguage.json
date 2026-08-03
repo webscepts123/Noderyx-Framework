@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Noderyx Frame",
+  "scopeName": "source.noderframe",
+  "patterns": [
+    { "name": "comment.line.double-slash.noderframe", "match": "//.*$" },
+    { "name": "keyword.control.noderframe", "match": "^\\s*(if|else if|else|for|list|component)\\b" },
+    { "name": "variable.other.noderframe", "begin": "\\{\\{", "end": "\\}\\}" },
+    { "name": "string.quoted.double.noderframe", "begin": "\"", "end": "\"" },
+    { "name": "entity.name.tag.noderframe", "match": "^\\s*[A-Za-z][\\w-]*" },
+    { "name": "entity.other.attribute-name.class.noderframe", "match": "[.#][\\w-]+" },
+    { "name": "entity.other.attribute-name.noderframe", "match": "\\b[\\w:-]+(?==)" }
+  ]
+}

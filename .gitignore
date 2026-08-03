@@ -1,0 +1,88 @@
+# Dependencies and package-manager caches
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
+.yarn/unplugged/
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+
+# Logs, diagnostics, tests, and coverage
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+qa-results/
+
+# Noderyx generated output and local recovery data
+.noderyx/
+public/generated/
+platforms/mobile/www/
+platforms/native/
+
+# General build output and temporary files
+dist/
+build/
+out/
+tmp/
+temp/
+.cache/
+*.tmp
+*.temp
+*.tsbuildinfo
+
+# Expo and React Native
+.expo/
+.expo-shared/
+web-build/
+metro-cache/
+react-native-packager-cache-*
+
+# Android/Gradle output (keep Android source and project settings)
+.gradle/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/captures/
+android/.idea/
+*.hprof
+
+# iOS/Xcode output (keep iOS source and project files)
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/.symlinks/
+DerivedData/
+
+# IDE and operating-system state
+.idea/
+*.iml
+.vscode/*.local.json
+.vscode/.ropeproject/
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+

@@ -1,0 +1,23 @@
+html lang="en"
+  head
+    meta charset="utf-8"
+    meta name="viewport" content="width=device-width, initial-scale=1"
+    meta name="robots" content="noindex"
+    title "404 — {{title}} | Noderyx"
+    link rel="stylesheet" href="/public/cool.css"
+  body
+    main.cool-error-page
+      section.cool-error-card
+        a.cool-brand href="/"
+          span.cool-brand-mark "N"
+          span "Noderyx"
+        span.cool-error-code "404"
+        span.cool-eyebrow "Lost in the routes"
+        h1 "{{title}}"
+        p.cool-error-message "{{message}}"
+        div.cool-row.cool-error-actions
+          a.cool-btn href="/" "Back home"
+          button.cool-btn.secondary type="button" data-noderyx="back" "Go back"
+        code.cool-error-details "{{details}}"
+      div.cool-error-decoration aria-hidden="true"
+        span "404"

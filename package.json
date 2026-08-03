@@ -1,0 +1,86 @@
+{
+  "name": "noderyx-framework",
+  "version": "0.4.0",
+  "description": "Noderyx Framework: a frontend-first template language, CSS toolkit, and Node.js backend framework.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webscepts123/Noderyx-Framework.git"
+  },
+  "homepage": "https://github.com/webscepts123/Noderyx-Framework#readme",
+  "bugs": {
+    "url": "https://github.com/webscepts123/Noderyx-Framework/issues"
+  },
+  "type": "module",
+  "main": "framework/index.js",
+  "files": [
+    "framework/",
+    "public/*.css",
+    "public/*.js",
+    "tooling/",
+    "docs/",
+    "deployment/",
+    "README.md"
+  ],
+  "bin": {
+    "noderyx-framework": "framework/cli.js",
+    "noderyx": "framework/cli.js",
+    "untitled": "framework/cli.js"
+  },
+  "scripts": {
+    "noderyx": "node framework/cli.js",
+    "untitled": "node framework/cli.js",
+    "dev": "node framework/cli.js serve --watch",
+    "live": "node framework/cli.js live",
+    "start": "node server.js",
+    "framework:update": "node framework/cli.js update",
+    "qa": "node framework/cli.js qa",
+    "build": "node framework/cli.js build resources/views public/generated",
+    "build:mobile": "node framework/cli.js build:mobile",
+    "mobile:preview": "node framework/cli.js mnoderframe:run",
+    "editor:install": "node framework/cli.js editor:install",
+    "build:native": "node framework/cli.js build:native",
+    "mobile:init": "node framework/cli.js mobile:init",
+    "mobile:android": "node framework/cli.js mobile:run android",
+    "mobile:ios": "node framework/cli.js mobile:run ios",
+    "migrate": "node framework/cli.js migrate",
+    "migrate:status": "node framework/cli.js migrate:status",
+    "migrate:rollback": "node framework/cli.js migrate:rollback",
+    "seed": "node framework/cli.js db:seed",
+    "test": "node --test",
+    "native:init": "node framework/cli.js native:init",
+    "native:android": "node framework/cli.js native:run android",
+    "native:ios": "node framework/cli.js native:run ios",
+    "native:start": "node framework/cli.js native:start"
+  },
+  "keywords": [
+    "web-framework",
+    "css-framework",
+    "nodejs",
+    "mobile",
+    "android",
+    "ios",
+    "pwa",
+    "capacitor",
+    "mysql",
+    "postgresql",
+    "mongodb",
+    "react-native",
+    "native",
+    "cross-platform",
+    "saas",
+    "ecommerce",
+    "enterprise"
+  ],
+  "license": "MIT",
+  "optionalDependencies": {
+    "mongodb": "^6.17.0",
+    "mysql2": "^3.14.1",
+    "pg": "^8.16.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@babel/parser": "^7.29.8"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "noderyx-language-support",
+  "displayName": "Noderyx Frames",
+  "description": "Official Noderyx Framework language support, syntax highlighting, and file icons for .noderframe web views and .mnoderframe mobile frames.",
+  "version": "0.2.0",
+  "publisher": "noderyx",
+  "icon": "icons/noderyx-extension.png",
+  "license": "MIT",
+  "keywords": ["Noderyx", "Noderyx Framework", "noderframe", "mnoderframe", "templates", "mobile", "Node.js"],
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages", "Other"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "noderframe",
+        "aliases": ["Noderyx Frame", "noderframe"],
+        "extensions": [".noderframe", ".mnoderframe"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/noderyx-file.svg",
+          "dark": "./icons/noderyx-file.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "noderframe",
+        "scopeName": "source.noderframe",
+        "path": "./syntaxes/noderframe.tmLanguage.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,229 @@
+html lang="en"
+  head
+    meta charset="utf-8"
+    meta name="viewport" content="width=device-width, initial-scale=1"
+    meta name="description" content="{{description}}"
+    meta name="robots" content="index, follow"
+    meta name="theme-color" content="#7c5cff"
+    meta name="csrf-token" content="{{csrfToken}}"
+    meta property="og:type" content="website"
+    meta property="og:title" content="{{siteName}}"
+    meta property="og:description" content="{{description}}"
+    meta property="og:url" content="{{siteUrl}}"
+    link rel="canonical" href="{{siteUrl}}"
+    title "{{siteName}}"
+    link rel="stylesheet" href="/public/cool.css"
+  body.ny-home
+    header.cool-nav-wrap
+      nav.cool-container.cool-nav aria-label="Main navigation"
+        a.cool-brand href="/" aria-label="Noderyx home"
+          span.cool-brand-mark "N"
+          span "Noderyx"
+        div.cool-nav-links
+          a href="#ideas" "Ideas"
+          a href="#first-move" "First move"
+          a href="#ai-studio" "AI studio"
+          a href="/api/status" "Live API"
+        div.cool-nav-actions
+          span.ny-live-label
+            span.cool-pulse
+            span "Workspace live"
+          button.cool-icon-btn#theme-toggle type="button" aria-label="Change color theme" "Theme"
+    main
+      section.cool-container.ny-hero
+        div.ny-hero-copy
+          span.cool-badge
+            span.cool-pulse
+            span "Independently built. Human maintained."
+          h1 "A framework with opinions, room, and a little "
+            span.cool-gradient-text "personality."
+          p.cool-lead "Noderyx was made by developers who wanted fewer layers between an idea and a working product. The defaults are thoughtful, the source stays readable, and your application remains yours."
+          div.cool-row.ny-hero-actions
+            a.cool-btn href="#ideas" "Find your direction"
+            a.cool-btn.secondary href="#first-move" "Make the first move"
+          div.ny-edit-note
+            span.ny-edit-mark "01"
+            div
+              strong "Begin in the view"
+              code "resources/views/home.noderframe"
+        div.ny-board aria-label="Product idea board"
+          div.ny-board-head
+            div
+              span.ny-kicker "Idea board"
+              strong "What could this become?"
+            span.ny-board-count "04 paths"
+          div.ny-board-grid
+            a.ny-board-card.ny-board-violet href="#idea-dashboard"
+              span.ny-card-index "01"
+              strong "A focused SaaS"
+              p "One painful workflow, made effortless."
+              span.ny-card-arrow "Explore ->"
+            a.ny-board-card.ny-board-cyan href="#idea-api"
+              span.ny-card-index "02"
+              strong "A living API"
+              p "Useful data with a beautiful interface."
+              span.ny-card-arrow "Explore ->"
+            a.ny-board-card.ny-board-lime href="#idea-mobile"
+              span.ny-card-index "03"
+              strong "A mobile companion"
+              p "The right action, exactly when needed."
+              span.ny-card-arrow "Explore ->"
+            a.ny-board-card.ny-board-ink href="#idea-package"
+              span.ny-card-index "04"
+              strong "A package ecosystem"
+              p "Solve it once, then share the capability."
+              span.ny-card-arrow "Explore ->"
+      section.ny-strip aria-label="Workspace capabilities"
+        div.cool-container.ny-strip-inner
+          span "Views"
+          span.ny-divider
+          span "APIs"
+          span.ny-divider
+          span "Data"
+          span.ny-divider
+          span "Mobile"
+          span.ny-divider
+          span "Packages"
+          span.ny-divider
+          span "Your idea"
+      section.cool-container.ny-maker
+        div.ny-maker-note
+          div.ny-maker-mark "N"
+          div
+            span.cool-eyebrow "A note from the makers"
+            p.ny-maker-quote "We built Noderyx because small projects kept becoming toolchain projects. We wanted views we could read, routes we could follow, security we did not have to remember later, and enough structure to keep a growing codebase kind to the next person."
+            p "That is still the test for every feature: does it make the work clearer without taking ownership away from you?"
+            span.ny-signature "- The Noderyx maintainers"
+        div.ny-principles
+          article
+            span "01"
+            h3 "Readable first"
+            p "Code should explain itself before the documentation has to."
+          article
+            span "02"
+            h3 "Useful defaults"
+            p "Security, performance, and structure belong in the starting point."
+          article
+            span "03"
+            h3 "Your way out"
+            p "Use the convention, extend it, or replace it when your product needs more."
+      section.cool-container.ny-ideas#ideas
+        div.ny-section-head
+          div
+            span.cool-eyebrow "Choose a direction"
+            h2 "Build for a real moment in someone's day."
+          p "We left these prompts here because a blank project can feel oddly loud. Pick one, change it beyond recognition, or ignore all of them and build the thing already in your head."
+        div.ny-idea-grid
+          article.ny-idea-card#idea-dashboard
+            span.ny-idea-number "01 / Product"
+            h3 "A calm operations dashboard"
+            p "Turn scattered updates into one clear daily view for a team, studio, shop, or community."
+            div.ny-tags
+              span "accounts"
+              span "metrics"
+              span "workflows"
+            code.ny-path "app/Controllers + resources/views"
+          article.ny-idea-card#idea-api
+            span.ny-idea-number "02 / Platform"
+            h3 "An API people enjoy using"
+            p "Gather public or private data, give it a clean contract, and make exploration feel immediate."
+            div.ny-tags
+              span "JSON"
+              span "auth"
+              span "rate limits"
+            code.ny-path "routes/api.js"
+          article.ny-idea-card#idea-mobile
+            span.ny-idea-number "03 / Companion"
+            h3 "A useful pocket experience"
+            p "Design around one recurring action: capture, check, book, learn, track, or respond."
+            div.ny-tags
+              span "native"
+              span "offline"
+              span "notifications"
+            code.ny-path "resources/views -> platforms"
+          article.ny-idea-card#idea-package
+            span.ny-idea-number "04 / Ecosystem"
+            h3 "A capability others can install"
+            p "Package a route, integration, workflow, or service that makes every Noderyx project stronger."
+            div.ny-tags
+              span "provider"
+              span "options"
+              span "npm"
+            code.ny-path "packages/your-package"
+          article.ny-idea-card
+            span.ny-idea-number "05 / Community"
+            h3 "A place built around belonging"
+            p "Create a thoughtful home for a niche: stories, resources, events, discussion, and shared progress."
+            div.ny-tags
+              span "profiles"
+              span "content"
+              span "events"
+            code.ny-path "routes + models + views"
+          article.ny-idea-card.ny-idea-blank
+            span.ny-idea-number "06 / Yours"
+            h3 "The idea nobody listed"
+            p "Combine what you know, what you care about, and what people keep asking you to fix."
+            div.ny-blank-line
+            div.ny-blank-line.ny-blank-short
+            strong "Make this card obsolete."
+      section.cool-container.ny-first#first-move
+        div.ny-first-intro
+          span.cool-eyebrow "Your first move"
+          h2 "One small loop. Then momentum."
+          p "Give one screen a purpose, give it real data, and let one person use it. The next decision will become obvious."
+        div.ny-build-map
+          article
+            span "01"
+            h3 "Shape the moment"
+            p "Replace this welcome page with the one thing your user came to accomplish."
+            code "resources/views/home.noderframe"
+          article
+            span "02"
+            h3 "Make it real"
+            p "Create the route and controller action that supply meaningful data."
+            code "routes/web.js + app/Controllers"
+          article
+            span "03"
+            h3 "Learn from use"
+            p "Put it in front of someone, notice the friction, and improve the smallest valuable loop."
+            code "listen -> learn -> refine"
+      section.cool-container.ny-ai#ai-studio
+        div.ny-ai-copy
+          span.cool-eyebrow "Optional AI workspace"
+          h2 "Turn the messy first thought into a useful first move."
+          p "This is a small idea partner, not an autopilot. Your prompt travels from this page to your Noderyx server, and only the server speaks to the AI provider."
+          div.ny-ai-prompts aria-label="Example prompts"
+            button type="button" data-ai-prompt="A calm booking tool for independent tattoo artists" "Studio bookings"
+            button type="button" data-ai-prompt="An API that helps local communities share useful resources" "Community API"
+            button type="button" data-ai-prompt="A tiny mobile habit companion that respects privacy" "Private habits"
+        form.ny-ai-panel#ai-form
+          div.ny-ai-panel-head
+            div
+              span.ny-kicker "Idea partner"
+              strong "What are you thinking about?"
+            if aiEnabled
+              span.ny-ai-state.is-ready "AI ready"
+            else
+              span.ny-ai-state "Setup needed"
+          label for="ai-prompt" "Describe the person, their problem, or even half an idea."
+          textarea#ai-prompt name="prompt" maxlength="8000" rows="5" placeholder="I want to build something that helps..."
+          div.ny-ai-actions
+            span#ai-status aria-live="polite" "Your key stays on the server."
+            button.cool-btn#ai-submit type="submit" "Shape this idea"
+          div.ny-ai-output#ai-output hidden="hidden" aria-live="polite"
+      section.cool-container.ny-final
+        div
+          span.ny-kicker "The framework is ready"
+          h2 "Now make the reason it exists."
+          p "Keep what earns its place. Delete what does not. If something in the framework gets in your way, that is useful feedback too."
+        div.cool-row
+          a.cool-btn.cool-btn-light href="#ideas" "Choose an idea"
+          a.ny-text-link href="/api/status" "See the live API ->"
+    footer.cool-footer
+      div.cool-container.cool-footer-inner
+        a.cool-brand href="/"
+          span.cool-brand-mark "N"
+          span "Noderyx"
+        p "Made carefully. Improved in the open. Built to become yours."
+        a href="#ai-studio" "Start with one thought"
+    script src="/public/home.js" defer="defer"

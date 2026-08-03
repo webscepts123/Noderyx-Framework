@@ -1,0 +1,27 @@
+html lang="en" data-theme="dark"
+  head
+    meta charset="utf-8"
+    meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"
+    title "Noderyx Mobile"
+    link rel="stylesheet" href="/public/cool.css"
+  body.cool-mobile-body
+    div.cool-mobile-shell
+      header.cool-appbar.cool-safe-top
+        strong "Noderyx Mobile"
+        button.cool-icon-btn type="button" aria-label="Open notifications" "!"
+      main.cool-mobile-content
+        section.cool-stack
+          span.cool-eyebrow "Independent mobile UI"
+          h1 "Build for the device."
+          p.cool-muted "This screen lives in resources/mobile and does not change the website."
+          div.cool-mobile-grid
+            article.cool-card
+              strong "Responsive"
+              p.cool-caption "Phone-first layout and safe areas."
+            article.cool-card
+              strong "Editable"
+              p.cool-caption "Create screens with noderyx mobile:make."
+      nav.cool-tabbar aria-label="Main navigation"
+        a href="/" aria-current="page"
+          span.cool-tabbar-icon "⌂"
+          span "Home"
