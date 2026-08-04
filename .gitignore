@@ -37,6 +37,7 @@ qa-results/
 public/generated/
 platforms/mobile/www/
 platforms/native/
+platforms/cpanel/
 
 # General build output and temporary files
 dist/

@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { compile } from "./compiler.js";
+import { buildCpanel, CPANEL_MODES, doctorPhp, passengerHtaccess, proxyHtaccess, staticHtaccess } from "./cpanel.js";
 import { connect } from "./database.js";
 import { migrate, migrationStatus, rollback } from "./migrations.js";
 import { buildMobile, webDirectory } from "./mobile.js";
@@ -579,6 +580,52 @@ async function build() {
     await writeFile(target, compile(source));
     console.log(`Built ${target}`);
   }
+}
+
+function cpanelSettings() {
+  return {
+    out: option("out", "platforms/cpanel"),
+    mode: option("mode", "passenger"),
+    user: option("user"),
+    directory: option("dir", "public_html"),
+    appRoot: option("app-root"),
+    baseUri: option("base-uri", "/"),
+    nodeBinary: option("node"),
+    startupFile: option("startup", "app.js"),
+    environment: option("env", "production"),
+    port: Number(option("port", 3000)),
+    host: option("host", "127.0.0.1"),
+    views: option("views", "resources/views"),
+    public: option("public", "public")
+  };
+}
+
+async function cpanelBuild() {
+  const result = await buildCpanel(cpanelSettings());
+  console.log(`Built the ${result.mode} bundle in ${relative(process.cwd(), result.out) || "."}`);
+  if (result.mode !== "static") console.log(`Application root: ${result.appRoot}`);
+  console.log(`Files: ${result.files.length}`);
+  for (const note of result.notes) console.log(`  - ${note}`);
+  console.log("\nUpload the contents of that folder into public_html, then read README-CPANEL.md.");
+}
+
+/** Print a single artefact so an existing deployment can be patched by hand. */
+async function cpanelFile() {
+  const [what = "htaccess"] = positional();
+  const settings = cpanelSettings();
+  if (what === "htaccess") {
+    if (!CPANEL_MODES.includes(settings.mode)) {
+      throw new Error(`Unknown cPanel mode: ${settings.mode}. Use ${CPANEL_MODES.join(", ")}.`);
+    }
+    const writers = { passenger: passengerHtaccess, proxy: proxyHtaccess, static: staticHtaccess };
+    console.log(writers[settings.mode](settings));
+    return;
+  }
+  if (what === "check" || what === "doctor") {
+    console.log(doctorPhp(settings));
+    return;
+  }
+  throw new Error("Example: noderyx cpanel:file htaccess --mode=passenger --user=myaccount");
 }
 
 async function withDatabase(action) {
@@ -1408,6 +1455,11 @@ Noderyx Framework CLI
   noderyx update [version|tag] [--dry-run] [--no-test]
   noderyx qa [--json] [--strict]
 
+  Shared hosting (cPanel, runs from public_html without Setup Node.js App)
+  noderyx cpanel:build [--mode=passenger|proxy|static] [--user=account] [--dir=public_html]
+                       [--node=/opt/alt/alt-nodejs20/root/usr/bin/node] [--port=3000] [--out=platforms/cpanel]
+  noderyx cpanel:file <htaccess|check> [--mode=passenger] [--user=account]
+
   Native Android and iOS (real platform widgets, no WebView)
   noderyx native:init [--app-id=com.example.app] [--app-name=Name] [--no-install]
   noderyx native:run <android|ios>
@@ -1459,6 +1511,8 @@ try {
   else if (command === "port:check" || command === "port:status") await checkPort();
   else if (command === "build") await build();
   else if (command === "qa" || command === "check") await qaCheck();
+  else if (command === "cpanel:build" || command === "build:cpanel" || command === "deploy:cpanel") await cpanelBuild();
+  else if (command === "cpanel:file" || command === "cpanel:htaccess") await cpanelFile();
   else if (command === "build:mobile" || command === "mobile:build") await buildMobileBundle();
   else if (command === "mnoderframe:run" || command === "mobile:preview") await runMobileFrame();
   else if (command === "editor:install") await installEditorSupport();

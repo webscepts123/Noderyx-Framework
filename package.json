@@ -35,6 +35,7 @@
     "framework:update": "node framework/cli.js update",
     "qa": "node framework/cli.js qa",
     "build": "node framework/cli.js build resources/views public/generated",
+    "cpanel:build": "node framework/cli.js cpanel:build",
     "build:mobile": "node framework/cli.js build:mobile",
     "mobile:preview": "node framework/cli.js mnoderframe:run",
     "editor:install": "node framework/cli.js editor:install",

@@ -26,20 +26,27 @@ app.provide("ai", ai(config.ai));
 registerRoutes(app);
 await loadPackages(app, config.packages, { config });
 
-const port = Number(process.env.PORT ?? 3000);
+// Phusion Passenger (cPanel) may hand the application a unix socket path in
+// PORT instead of a number, so only treat a numeric value as a TCP port.
+const requestedPort = String(process.env.PORT ?? 3000);
+const socketPath = /^\d+$/.test(requestedPort) ? null : requestedPort;
 const host = process.env.HOST ?? "0.0.0.0";
-let activePort = port;
+let activePort = Number(requestedPort);
 let portAttempts = 0;
-const server = app.listen(activePort, host);
+const server = socketPath ? app.listen(socketPath) : app.listen(activePort, host);
 
 server.on("listening", () => {
+  if (socketPath) {
+    console.log(`Noderyx Framework listening on ${socketPath}`);
+    return;
+  }
   const address = server.address();
   const displayHost = host === "0.0.0.0" ? "localhost" : host;
   console.log(`Noderyx Framework running at http://${displayHost}:${address.port}`);
 });
 
 server.on("error", (error) => {
-  const retryable = error.code === "EADDRINUSE" || error.code === "EACCES";
+  const retryable = !socketPath && (error.code === "EADDRINUSE" || error.code === "EACCES");
   if (process.env.NODE_ENV !== "production" && retryable && portAttempts < 10) {
     portAttempts += 1;
     activePort += 1;

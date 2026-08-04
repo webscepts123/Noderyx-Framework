@@ -50,6 +50,20 @@ Use `npm run build` for a static profile deployment. Dynamic profiles can use
 the same build for pre-rendered pages while continuing to serve APIs through
 `server.js`.
 
+## Shared hosting without Setup Node.js App
+
+Many cPanel plans hide **Setup Node.js App > Create Application**. Build a
+bundle that runs from `public_html` directly instead:
+
+```powershell
+npm.cmd run cpanel:build -- --user=youraccount
+```
+
+Upload the contents of `platforms/cpanel/` into `public_html` and follow the
+generated `README-CPANEL.md`. Add `--mode=proxy` when the host has no Passenger,
+or `--mode=static` when it has no Node.js at all. See
+[cPanel deployment](../deployment/cpanel/README.md).
+
 ## Develop the framework from a source checkout
 
 From the Noderyx Framework repository:

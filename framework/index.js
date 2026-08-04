@@ -14,6 +14,21 @@ export { runSeeders } from "./seeders.js";
 export { Router } from "./router.js";
 export { HttpError } from "./errors.js";
 export { buildMobile, capacitorConfig, mobileOptions, webDirectory } from "./mobile.js";
+export {
+  buildCpanel,
+  cpanelOptions,
+  deployReadme,
+  doctorPhp,
+  passengerHtaccess,
+  phpBridge,
+  proxyHtaccess,
+  startScript,
+  startupShim,
+  staticHtaccess,
+  stopScript,
+  CPANEL_MODES,
+  NODE_CANDIDATES
+} from "./cpanel.js";
 export { solutionProfile, solutionProfiles } from "./profiles.js";
 export { inspectProject, formatQaReport } from "./qa.js";
 export { compileMNodeFrame, parseMNodeFrame } from "./mnoderframe.js";
