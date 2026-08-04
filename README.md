@@ -512,14 +512,18 @@ Most cPanel plans that hide **Setup Node.js App > Create Application** can still
 run Noderyx from `public_html`:
 
 ```bash
-npm run cpanel:build -- --user=youraccount
+npm run cpanel:build -- --user=youraccount --with-modules --repo=owner/name
 ```
 
-The command writes `platforms/cpanel/`; upload its contents into `public_html`
-and follow the generated `README-CPANEL.md`. It ships a Passenger `.htaccess`
-that starts the app without the Create Application screen, a startup file, deny
-rules that keep the source unreadable from the web, and a key-protected
-`noderyx-check.php` that reports the account's Node paths from a browser.
+Upload the contents of `platforms/cpanel/` into `public_html`, then open
+`noderyx-install.php?key=...` in a browser. Nothing after the upload needs a
+terminal, which matters because these accounts have no Run NPM Install button
+and no `npm` on the shell PATH.
+
+The installer detects the account's Node binaries, forges `APP_KEY`, and writes
+`.env` and `.htaccess` with the correct absolute paths. `noderyx-deploy.php`
+then updates the live site from a GitHub branch on a button press, or on every
+push through a signed webhook.
 
 Use `--mode=proxy` when the host has no Passenger but does have a Node binary: a
 cron job keeps the process alive and `index.php` bridges Apache to it. Use

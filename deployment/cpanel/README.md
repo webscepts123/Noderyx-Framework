@@ -13,12 +13,41 @@ browser. It reports whether Passenger is present and which Node binaries exist.
 ## Run from public_html
 
 `noderyx cpanel:build` writes a folder whose contents go straight into
-`public_html`. No Create Application step is involved.
+`public_html`. No Create Application step is involved, and nothing after the
+upload needs a terminal.
 
-    npm run cpanel:build -- --user=youraccount
+    npm run cpanel:build -- --user=youraccount --with-modules --repo=owner/name
 
 The command writes `platforms/cpanel/`. Upload everything inside it, including
-the hidden `.htaccess`, then follow the generated `README-CPANEL.md`.
+the hidden `.htaccess`, then open the installer in a browser.
+
+Use `--with-modules` unless you plan to upload `node_modules` separately. These
+accounts have no Run NPM Install button, and `npm` is usually absent from the
+shell PATH even when Node is installed, so the ZIP has to arrive complete.
+
+### Set up in a browser
+
+Open `https://your-domain/noderyx-install.php?key=<key printed by the build>`.
+
+The page lists the Node binaries it found, forges `APP_KEY`, writes `.env` and
+`.htaccess` with the real absolute paths, and starts the application. It ends
+with a button that deletes itself.
+
+### Update from GitHub, also in a browser
+
+Open `https://your-domain/noderyx-deploy.php?key=<same key>`.
+
+Set `owner/repository` and a branch, then press **Deploy latest**. The panel
+downloads the branch archive over HTTPS, replaces the application files, and
+restarts. `.env`, `.htaccess`, `tmp/`, and `node_modules/` are never touched.
+
+To deploy on every push, add the webhook the page shows under GitHub
+**Settings > Webhooks**: payload URL, content type `application/json`, and the
+generated secret. Requests are verified with an HMAC-SHA256 signature, and only
+the configured repository and branch are accepted.
+
+Pushes cannot install dependencies. If `package.json` changed, upload a fresh
+`node_modules` or rebuild the bundle with `--with-modules`.
 
 ### Modes
 
@@ -38,12 +67,17 @@ the hidden `.htaccess`, then follow the generated `README-CPANEL.md`.
     --user=youraccount   cPanel username; fills in /home/<user>/public_html
     --dir=public_html    Target directory under the home directory
     --app-root=/path     Absolute application root, instead of --user and --dir
-    --node=/path/node    Node binary; noderyx-check.php prints the right one
+    --node=/path/node    Node binary; the installer detects this for you
+    --with-modules       Bundle node_modules so the upload needs no terminal
+    --repo=owner/name    Preload the deploy panel with your GitHub repository
+    --branch=main        Branch the deploy panel and webhook follow
     --port=3000          Local port for proxy mode
     --out=platforms/cpanel
 
-Print one file without rebuilding, to patch a live deployment:
+Print one file without rebuilding, to add a browser tool to a live deployment:
 
+    npm run noderyx -- cpanel:file install --user=youraccount > noderyx-install.php
+    npm run noderyx -- cpanel:file deploy --repo=owner/name > noderyx-deploy.php
     npm run noderyx -- cpanel:file htaccess --mode=passenger --user=youraccount
     npm run noderyx -- cpanel:file check
 
@@ -51,16 +85,14 @@ Print one file without rebuilding, to patch a live deployment:
 
     .htaccess            Starts the app and blocks source files from the web
     app.js               Startup file Passenger looks for; loads server.js
+    noderyx-install.php  Browser installer: .env, .htaccess, APP_KEY
+    noderyx-deploy.php   Browser deploy panel and GitHub webhook endpoint
     noderyx-check.php    Read-only environment report, key-protected
     README-CPANEL.md     Upload, configure, and restart steps for the mode
     tmp/restart.txt      Save this file to restart the app (passenger mode)
     index.php            PHP to Node bridge (proxy mode)
     noderyx-start.sh     Cron keepalive and restart script (proxy mode)
     noderyx-stop.sh      Stops the process (proxy mode)
-
-`node_modules` is not copied. Run `npm install --omit=dev` locally and upload
-the folder: an account without Setup Node.js App also has no Run NPM Install
-button.
 
 ### Keeping source private
 
@@ -77,10 +109,15 @@ To keep source out of the document root entirely, put the application in
 `~/noderyx-app`, upload only `.htaccess` and your assets into `public_html`, and
 build with `--app-root=/home/youraccount/noderyx-app`.
 
-### Delete the check file
+### Delete the setup files when you are done
 
-`noderyx-check.php` reports paths and installed binaries. It requires the key
-printed by the build, but delete it once the site works.
+`noderyx-install.php` and `noderyx-check.php` are key-protected, but there is no
+reason to leave them online once the site works. The installer's last screen has
+a button that deletes both.
+
+Keep `noderyx-deploy.php` only if you want browser or webhook deploys. It writes
+files by design, so treat its key and webhook secret as passwords. Delete it if
+you would rather deploy by upload.
 
 ## Managed application
 

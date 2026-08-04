@@ -17,8 +17,10 @@ export { buildMobile, capacitorConfig, mobileOptions, webDirectory } from "./mob
 export {
   buildCpanel,
   cpanelOptions,
+  deployPhp,
   deployReadme,
   doctorPhp,
+  installerPhp,
   passengerHtaccess,
   phpBridge,
   proxyHtaccess,

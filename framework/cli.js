@@ -7,7 +7,16 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { compile } from "./compiler.js";
-import { buildCpanel, CPANEL_MODES, doctorPhp, passengerHtaccess, proxyHtaccess, staticHtaccess } from "./cpanel.js";
+import {
+  buildCpanel,
+  CPANEL_MODES,
+  deployPhp,
+  doctorPhp,
+  installerPhp,
+  passengerHtaccess,
+  proxyHtaccess,
+  staticHtaccess
+} from "./cpanel.js";
 import { connect } from "./database.js";
 import { migrate, migrationStatus, rollback } from "./migrations.js";
 import { buildMobile, webDirectory } from "./mobile.js";
@@ -596,7 +605,10 @@ function cpanelSettings() {
     port: Number(option("port", 3000)),
     host: option("host", "127.0.0.1"),
     views: option("views", "resources/views"),
-    public: option("public", "public")
+    public: option("public", "public"),
+    repository: option("repo"),
+    branch: option("branch", "main"),
+    withModules: hasFlag("with-modules")
   };
 }
 
@@ -625,7 +637,15 @@ async function cpanelFile() {
     console.log(doctorPhp(settings));
     return;
   }
-  throw new Error("Example: noderyx cpanel:file htaccess --mode=passenger --user=myaccount");
+  if (what === "install" || what === "installer") {
+    console.log(installerPhp(settings));
+    return;
+  }
+  if (what === "deploy" || what === "panel") {
+    console.log(deployPhp(settings));
+    return;
+  }
+  throw new Error("Example: noderyx cpanel:file install --user=myaccount > noderyx-install.php");
 }
 
 async function withDatabase(action) {
@@ -1463,8 +1483,9 @@ Noderyx Framework CLI
 
   Shared hosting (cPanel, runs from public_html without Setup Node.js App)
   noderyx cpanel:build [--mode=passenger|proxy|static] [--user=account] [--dir=public_html]
+                       [--with-modules] [--repo=owner/name] [--branch=main]
                        [--node=/opt/alt/alt-nodejs20/root/usr/bin/node] [--port=3000] [--out=platforms/cpanel]
-  noderyx cpanel:file <htaccess|check> [--mode=passenger] [--user=account]
+  noderyx cpanel:file <htaccess|check|install|deploy> [--mode=passenger] [--user=account]
 
   Native Android and iOS (real platform widgets, no WebView)
   noderyx native:init [--app-id=com.example.app] [--app-name=Name] [--no-install]

@@ -56,13 +56,17 @@ Many cPanel plans hide **Setup Node.js App > Create Application**. Build a
 bundle that runs from `public_html` directly instead:
 
 ```powershell
-npm.cmd run cpanel:build -- --user=youraccount
+npm.cmd run cpanel:build -- --user=youraccount --with-modules --repo=owner/name
 ```
 
-Upload the contents of `platforms/cpanel/` into `public_html` and follow the
-generated `README-CPANEL.md`. Add `--mode=proxy` when the host has no Passenger,
-or `--mode=static` when it has no Node.js at all. See
-[cPanel deployment](../deployment/cpanel/README.md).
+Upload the contents of `platforms/cpanel/` into `public_html`, then open
+`https://your-domain/noderyx-install.php?key=...` with the key the build prints.
+The installer forges `APP_KEY` and writes `.env` and `.htaccess` for you; no
+terminal is used on the server. `noderyx-deploy.php` handles later updates from
+GitHub, by button or by signed webhook.
+
+Add `--mode=proxy` when the host has no Passenger, or `--mode=static` when it
+has no Node.js at all. See [cPanel deployment](../deployment/cpanel/README.md).
 
 ## Develop the framework from a source checkout
 

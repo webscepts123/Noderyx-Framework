@@ -7,7 +7,9 @@ import test from "node:test";
 import {
   buildCpanel,
   cpanelOptions,
+  deployPhp,
   doctorPhp,
+  installerPhp,
   passengerHtaccess,
   phpBridge,
   proxyHtaccess,
@@ -65,7 +67,7 @@ test("Generated .htaccess keeps application source unreadable inside public_html
 
 test("Proxy .htaccess serves real files and forwards the rest to the bridge", () => {
   const htaccess = proxyHtaccess({ port: 4200 });
-  assert.match(htaccess, /RewriteCond %\{REQUEST_FILENAME\} -f\n\s*RewriteCond %\{REQUEST_URI\} !\^\/\(index\|noderyx-check\)/);
+  assert.match(htaccess, /RewriteCond %\{REQUEST_FILENAME\} -f\n\s*RewriteCond %\{REQUEST_URI\} !\^\/\(index\|noderyx-\(check\|install\|deploy\)\)/);
   assert.match(htaccess, /RewriteRule \^ index\.php \[QSA,L\]/);
   assert.match(htaccess, /127\.0\.0\.1:4200/);
 });
@@ -107,6 +109,93 @@ test("Diagnostics page stays hidden without the generated key", () => {
   assert.match(php, /DELETE THIS FILE/);
   // The page reports only; it must never write to the account.
   assert.doesNotMatch(php, /file_put_contents|unlink|fopen\(/);
+});
+
+test("Installer forges APP_KEY in the format the framework accepts", () => {
+  const php = installerPhp({ token: "tok123" });
+  // generateKey() is randomBytes(32).toString("base64url"); appKey() rejects < 32 chars.
+  assert.match(php, /random_bytes\(32\)/);
+  assert.match(php, /rtrim\(strtr\(base64_encode\(random_bytes\(32\)\), '\+\/', '-_'\), '='\)/);
+});
+
+test("Installer writes .env and .htaccess with the account's real absolute path", () => {
+  const php = installerPhp({ token: "tok123", user: "acct" });
+  assert.match(php, /str_replace\(\s*\['__APP_ROOT__', '__NODE_BINARY__'\],\s*\[__DIR__, \$node\]/);
+  assert.match(php, /file_put_contents\(__DIR__ \. '\/\.env'/);
+  assert.match(php, /chmod\(__DIR__ \. '\/\.env', 0600\)/);
+  assert.match(php, /file_put_contents\(__DIR__ \. '\/\.htaccess'/);
+  // Proxy mode must trust the bridge, or every client looks like localhost.
+  assert.match(php, /'TRUST_PROXY' => \$mode === 'proxy' \? 'true' : 'false'/);
+});
+
+test("Installer refuses without the key and can remove itself", () => {
+  const php = installerPhp({ token: "tok123" });
+  assert.match(php, /hash_equals\(NODERYX_KEY, \(string\) \(\$_REQUEST\['key'\] \?\? ''\)\)/);
+  assert.match(php, /http_response_code\(404\)/);
+  assert.match(php, /unlink\(__DIR__ \. '\/' \. \$file\)/);
+});
+
+test("Installer keeps the .env.example documentation while overriding values", () => {
+  const php = installerPhp({ token: "tok123" });
+  assert.match(php, /preg_match\('\/\^\(\[A-Z0-9_\]\+\)=\/', \$line, \$match\)/);
+  assert.match(php, /Added by the Noderyx installer/);
+});
+
+test("Deploy panel verifies the GitHub webhook signature before doing anything", () => {
+  const php = deployPhp({ token: "tok123", webhookSecret: "s3cret", repository: "owner/repo" });
+  assert.match(php, /'sha256=' \. hash_hmac\('sha256', \$payload, NODERYX_WEBHOOK_SECRET\)/);
+  assert.match(php, /hash_equals\(\$expected, \$signature\)/);
+  assert.match(php, /http_response_code\(401\)/);
+  // Only the configured repository and branch may trigger a deploy.
+  assert.match(php, /\$repository !== noderyx_repository\(\)/);
+  assert.match(php, /'refs\/heads\/' \. \$branch/);
+});
+
+test("Deploy panel preserves server-owned files and validates the repository name", () => {
+  const php = deployPhp({ token: "tok123" });
+  for (const kept of ["'.env'", "'.htaccess'", "'tmp'", "'node_modules'"]) {
+    assert.ok(php.includes(kept), `deploy should preserve ${kept}`);
+  }
+  assert.match(php, /\^\[\\w\.-\]\+\/\[\\w\.-\]\+\$/);
+  assert.match(php, /codeload\.github\.com/);
+  assert.match(php, /NODERYX_MAX_ARCHIVE/);
+});
+
+test("Proxy .htaccess lets the browser tools run as PHP instead of bridging them", () => {
+  const htaccess = proxyHtaccess({ port: 3000 });
+  assert.match(htaccess, /!\^\/\(index\|noderyx-\(check\|install\|deploy\)\)/);
+});
+
+test("Bundling node_modules makes the upload complete with no terminal", async (t) => {
+  const out = await workspace();
+  t.after(() => rm(out, { recursive: true, force: true }));
+
+  const result = await buildCpanel({ out, user: "acct", withModules: true });
+
+  assert.ok(existsSync(join(out, "node_modules")), "npm is absent on these accounts");
+  assert.ok(existsSync(join(out, "node_modules", ".htaccess")), "dependencies stay unreadable");
+  assert.ok(result.files.includes("node_modules/"));
+  assert.ok(!result.notes.some((note) => note.includes("not bundled")));
+});
+
+test("Bundles ship the browser installer and deploy panel", async (t) => {
+  const out = await workspace();
+  t.after(() => rm(out, { recursive: true, force: true }));
+
+  const result = await buildCpanel({ out, user: "acct", repository: "owner/repo" });
+
+  assert.ok(existsSync(join(out, "noderyx-install.php")));
+  assert.ok(existsSync(join(out, "noderyx-deploy.php")));
+  const deploy = await readFile(join(out, "noderyx-deploy.php"), "utf8");
+  assert.match(deploy, /const NODERYX_REPOSITORY = 'owner\/repo'/);
+  assert.match(deploy, new RegExp(`const NODERYX_WEBHOOK_SECRET = '${result.webhookSecret}'`));
+  assert.ok(result.notes.some((note) => note.includes("noderyx-install.php")));
+
+  // The README must not tell users to run npm scripts that a generated
+  // project does not define; npm is not even on the PATH on these accounts.
+  const readme = await readFile(join(out, "README-CPANEL.md"), "utf8");
+  assert.doesNotMatch(readme, /npm run noderyx -- spark:key/);
+  assert.match(readme, /noderyx-install\.php\?key=/);
 });
 
 test("Passenger bundle carries the app, a startup shim, and per-directory guards", async (t) => {
