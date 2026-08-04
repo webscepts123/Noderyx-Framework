@@ -77,7 +77,38 @@ jobs:
       - name: Verify package contents
         run: npm pack --dry-run
 
+      # Publishing a release and pressing Run workflow for the same version both
+      # reach this job, and npm versions are immutable, so the second arrival
+      # would fail on an already-correct state. Treat it as done instead.
+      - name: Check whether this version is already on npm
+        id: registry
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version > /dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is already on npm; nothing to publish." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "Publishing $NAME@$VERSION." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # No NPM_TOKEN is used. npm exchanges GitHub's short-lived OIDC token
       # through the Trusted Publisher configured on npmjs.com.
       - name: Publish to npm
+        if: steps.registry.outputs.published == 'false'
         run: npm publish --access public
+
+      - name: Confirm the published version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          for attempt in 1 2 3 4 5; do
+            if [ "$(npm view "$NAME@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              echo "$NAME@$VERSION is live on npm." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "$NAME@$VERSION is not answering from the registry yet." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
