@@ -1,8 +1,18 @@
 name: Publish package to npm
 
 on:
+  # Publishing a GitHub release stays the normal route.
   release:
     types: [published]
+
+  # Actions > Publish package to npm > Run workflow, for when a tag exists but
+  # no release was published for it. Typing the version is the safety catch.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without the v (for example 0.6.0)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -35,10 +45,25 @@ jobs:
       - name: Install an OIDC-capable npm CLI
         run: npm install --global npm@11.5.1
 
+      # A release publishes whatever its tag points at; a manual run publishes
+      # the checked-out default branch. Both must match package.json exactly.
       - name: Verify release version
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: node -e "const p=require('./package.json'); if (process.env.RELEASE_TAG !== 'v' + p.version) { console.error('Release tag must be v' + p.version); process.exit(1) }"
+          MANUAL_VERSION: ${{ inputs.version }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          node -e "
+          const { version } = require('./package.json');
+          const { EVENT, RELEASE_TAG, MANUAL_VERSION } = process.env;
+          const supplied = EVENT === 'workflow_dispatch' ? MANUAL_VERSION : RELEASE_TAG;
+          const expected = EVENT === 'workflow_dispatch' ? version : 'v' + version;
+          if (supplied !== expected) {
+            console.error('package.json is ' + version + ', but this run asked for ' + supplied + '. Expected ' + expected + '.');
+            process.exit(1);
+          }
+          console.log('Publishing ' + version + ' from ' + EVENT + '.');
+          "
 
       - name: Install exact dependencies
         run: npm ci
