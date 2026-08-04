@@ -1,7 +1,7 @@
 {
   "name": "noderyx-framework",
-  "version": "0.5.0",
-  "description": "Noderyx Framework: a frontend-first template language, CSS toolkit, and Node.js backend framework.",
+  "version": "0.6.0",
+  "description": "Noderyx Framework: a frontend-first template language, CSS toolkit, and Node.js backend framework, with browser-based cPanel deployment that needs no terminal.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/webscepts123/Noderyx-Framework.git"
@@ -57,6 +57,12 @@
     "web-framework",
     "css-framework",
     "nodejs",
+    "cpanel",
+    "shared-hosting",
+    "public-html",
+    "passenger",
+    "deployment",
+    "no-terminal-deploy",
     "mobile",
     "android",
     "ios",

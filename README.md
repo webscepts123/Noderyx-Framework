@@ -10,13 +10,64 @@ the [trusted publishing guide](https://github.com/webscepts123/Noderyx-Framework
 > `.noderframe` and `.mnoderframe` then share the Noderyx file icon.
 
 Noderyx Framework is an experimental frontend-first web language and Node.js framework.
-It has four parts:
+It has five parts:
 
 - `.noderframe`: indentation-based Noderyx pages that compile to HTML.
 - `cool.css`: a lightweight responsive CSS design system.
 - `NoderyxApp`: a dependency-light Node.js server with routing, rendering, static
   files, JSON APIs, and database adapters.
 - **Android and iOS**: the same views build into installable mobile apps.
+- **Shared hosting**: deploy to cPanel from a browser, with no terminal at all.
+
+## New in 0.6.0: deploy to cPanel without a terminal
+
+Most cheap cPanel plans hide **Setup Node.js App → Create Application**. They
+also have no Run NPM Install button, and `npm` is missing from the shell PATH
+even when Node is installed. Noderyx now ships a deployment path that needs none
+of it.
+
+```bash
+npm run cpanel:build -- --user=youraccount --with-modules --repo=owner/name
+```
+
+Upload the resulting folder into `public_html`, then finish in a browser tab:
+
+| Page | What it does |
+| --- | --- |
+| `noderyx-install.php` | Finds the account's Node binaries, forges `APP_KEY`, writes `.env` and `.htaccess` with the real absolute paths, starts the app, then deletes itself |
+| `noderyx-deploy.php` | Updates the live site from a GitHub branch on a button press, or on every push through an HMAC-signed webhook |
+| `noderyx-check.php` | Read-only report: paths, Passenger, Node versions |
+
+Every page is protected by a generated key. `.env`, `.htaccess`, `tmp/`, and
+`node_modules/` survive a deploy untouched, and the generated `.htaccess` keeps
+your source unreadable over HTTP even though it sits inside the document root.
+
+Three modes cover what the account actually supports:
+
+- `--mode=passenger` — Passenger runs the app, started by `.htaccess` (default)
+- `--mode=proxy` — no Passenger: a cron keepalive plus a PHP bridge to Node
+- `--mode=static` — no Node at all: views compile to plain HTML
+
+Full walkthrough: [cPanel deployment](https://github.com/webscepts123/Noderyx-Framework/blob/main/deployment/cpanel/README.md).
+
+## Everything included
+
+| Area | What you get | Guide |
+| --- | --- | --- |
+| Templates | `.noderframe` indentation syntax, conditions, loops, components, one tree rendered to HTML or native | [language](#the-noderframe-language) |
+| Styling | `cool.css`, a responsive design system with no build step | [Cool.css](#coolcss) |
+| Backend | Routing, middleware, controllers, models, observers, JSON APIs, custom commands | [backend](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/BACKEND.md) |
+| Databases | MySQL, PostgreSQL, MongoDB adapters, migrations, seeders | [databases](#databases) |
+| Security | App key signing, CSRF, sessions, rate limiting, CORS, API keys, security profiles | [security](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/SECURITY.md) |
+| Quality audit | `npm run qa` checks templates, viewport metadata, titles, image alt text, accessible control names, internal links, and native-renderer support. `--strict` fails on warnings, `--json` for CI | [QA checks](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/QA.md) |
+| Mobile | Android and iOS from the same views, either real platform widgets or a packaged web build | [native](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/NATIVE.md), [mobile](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/MOBILE.md) |
+| AI | Provider-neutral client for Claude and OpenAI, wired into the service container | [AI setup](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/AI.md) |
+| Packages | Local auto-discovered plugins plus published npm packages | [packages](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/PACKAGES.md) |
+| Deployment | cPanel from a browser, Docker, AWS, Procfile hosts | [cPanel](https://github.com/webscepts123/Noderyx-Framework/blob/main/deployment/cpanel/README.md) |
+| SEO | Canonical and social tags, `robots.txt`, `sitemap.xml`, compression, ETags, asset caching | [SEO](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/SEO-PERFORMANCE.md) |
+| Tooling | Live development, safe framework updates, editor icons and syntax | [live dev](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/LIVE-DEVELOPMENT.md), [upgrading](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/UPGRADING.md) |
+
+Runtime dependencies are optional database drivers only.
 
 ## Noderyx project architecture
 
@@ -278,11 +329,43 @@ available — see [packaged web app](https://github.com/webscepts123/Noderyx-Fra
 ## Framework commands
 
 Noderyx Framework includes its own command tool, similar to Laravel Artisan. Inside this
-repository, call it through npm:
+repository, call it through npm; `noderyx help` prints the same reference.
+
+**Project and development**
 
 ```bash
-npm run noderyx -- serve --watch
-npm run noderyx -- serve --port=8080
+npx noderyx new my-site --profile=saas   # saas|trading|blog|ecommerce|static|enterprise
+npm run noderyx -- serve --watch         # development server, reloads on change
+npm run noderyx -- live 4000             # shareable live session, auto port
+npm run noderyx -- port:check 3000       # is the port free?
+npm run noderyx -- build                 # compile .noderframe pages to static HTML
+npm run noderyx -- update                # upgrade the framework safely, with tests
+npm run noderyx -- editor:install        # file icons and syntax for VS Code
+```
+
+**Quality and security**
+
+```bash
+npm run qa                               # audit templates, config, and env
+npm run noderyx -- qa --strict --json    # non-zero exit on warnings, machine readable
+npm run noderyx -- spark:key             # forge APP_KEY
+npm run noderyx -- hash "my password"    # password hash for seeding an admin
+npm test                                 # the framework's own test suite
+```
+
+**Deploy to shared hosting**
+
+```bash
+npm run cpanel:build -- --user=account --with-modules --repo=owner/name
+npm run noderyx -- cpanel:build --mode=proxy     # no Passenger on the host
+npm run noderyx -- cpanel:build --mode=static    # no Node.js on the host
+npm run noderyx -- cpanel:file install > noderyx-install.php
+npm run noderyx -- cpanel:file deploy --repo=owner/name > noderyx-deploy.php
+```
+
+**Generators**
+
+```bash
 npm run noderyx -- make:controller UserController
 npm run noderyx -- make:view dashboards/admin
 npm run noderyx -- make:model User --table=users
@@ -291,20 +374,33 @@ npm run noderyx -- make:middleware Authenticate
 npm run noderyx -- make:observer UserObserver
 npm run noderyx -- make:command SendReports --signature=reports:send
 npm run noderyx -- make:seeder UserSeeder
-npm run noderyx -- native:init --app-id=com.example.app
-npm run noderyx -- native:run android
-npm run noderyx -- build:native
-npm run noderyx -- migrate
-npm run noderyx -- migrate:status
-npm run noderyx -- migrate:rollback
-npm run noderyx -- db:seed
-npm run noderyx -- run reports:send
+npm run noderyx -- make:package hello-world
+npm run noderyx -- run reports:send      # run your own command
 ```
 
-After publishing/installing the package globally, the shorter form is
-`noderyx serve`, `noderyx migrate`, and so on. Generated project scripts use
-the local `noderyx-framework` executable, so `npm run dev` does not require a
-global installation.
+**Database**
+
+```bash
+npm run noderyx -- migrate
+npm run noderyx -- migrate:status
+npm run noderyx -- migrate:rollback --steps=2
+npm run noderyx -- db:seed --class=UserSeeder
+```
+
+**Android and iOS**
+
+```bash
+npm run noderyx -- native:init --app-id=com.example.app   # real platform widgets
+npm run noderyx -- native:run android
+npm run noderyx -- build:native
+npm run noderyx -- build:mobile          # packaged web build in a native shell
+npm run noderyx -- mobile:init android ios
+npm run noderyx -- mobile:run ios --live-reload=http://192.168.1.10:3000
+```
+
+After installing the package globally, the shorter form is `noderyx serve`,
+`noderyx migrate`, and so on. Generated project scripts use the local
+`noderyx-framework` executable, so `npm run dev` needs no global installation.
 
 See [backend controllers, models, migrations, and seeders](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/BACKEND.md).
 
