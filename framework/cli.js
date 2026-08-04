@@ -750,6 +750,7 @@ async function scaffoldProject() {
         "framework:update": "noderyx-framework update",
         qa: "noderyx-framework qa",
         build: "noderyx-framework build resources/views public/generated",
+        "cpanel:build": "noderyx-framework cpanel:build",
         "build:native": "noderyx-framework build:native --views=resources/mobile",
         "mobile:builder": "noderyx-framework mobile:builder",
         "native:init": "noderyx-framework native:init",
@@ -798,9 +799,14 @@ app.get("/", HomeController.handle("index"));
 app.get("/health", HomeController.handle("health"));
 await loadPackages(app, config.packages, { config });
 
-const port = Number(process.env.PORT ?? 3000);
+// Phusion Passenger (cPanel) may hand the application a unix socket path in
+// PORT instead of a number, so only treat a numeric value as a TCP port.
+const requestedPort = String(process.env.PORT ?? 3000);
+const socketPath = /^\\d+$/.test(requestedPort) ? null : requestedPort;
 const host = process.env.HOST ?? "0.0.0.0";
-app.listen(port, host, () => console.log(\`Running at http://localhost:\${port}\`));
+
+if (socketPath) app.listen(socketPath, () => console.log(\`Listening on \${socketPath}\`));
+else app.listen(Number(requestedPort), host, () => console.log(\`Running at http://localhost:\${requestedPort}\`));
 `,
     "app/Controllers/HomeController.js": `import { Controller } from "noderyx-framework";
 
