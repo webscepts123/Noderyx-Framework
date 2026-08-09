@@ -19,7 +19,66 @@ It has five parts:
 - **Android and iOS**: the same views build into installable mobile apps.
 - **Shared hosting**: deploy to cPanel from a browser, with no terminal at all.
 
-## New in 0.6.0: deploy to cPanel without a terminal
+## Install
+
+Node.js 20 or newer. Nothing needs to be installed before you start a project —
+`npx` fetches the CLI for the one command that creates it:
+
+```bash
+npx noderyx-framework@latest new my-website
+cd my-website
+npm run dev
+```
+
+Windows PowerShell resolves the shims by their full name:
+
+```powershell
+npx.cmd noderyx-framework@latest new my-website
+cd my-website
+npm.cmd run dev
+```
+
+Open `http://localhost:3000`. The generated project depends on
+`noderyx-framework` and its npm scripts call the local copy, so a global
+installation is never required.
+
+**Add the framework to a project you already have:**
+
+```bash
+npm i noderyx-framework
+```
+
+**Install the CLI globally**, to type `noderyx` anywhere:
+
+```bash
+npm i -g noderyx-framework
+noderyx new my-website
+```
+
+`noderyx`, `noderyx-framework`, and `untitled` are three names for the same
+executable. Pick a starting point with `--profile=` (`saas`, `trading`, `blog`,
+`ecommerce`, `static`, `enterprise`), a database with `--database=` (`sqlite`,
+`mysql`, `postgres`, `mongo`), and skip dependency installation with
+`--no-install`:
+
+```bash
+npx noderyx-framework@latest new shop --profile=ecommerce --database=mysql
+```
+
+Full reference: [installation and project scaffolding](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/INSTALLATION.md).
+
+## New in 0.7.0
+
+- **One-command deploy.** Every project now ships a `deployment/` folder, so a
+  cPanel account with Terminal or SSH updates itself from GitHub with
+  `bash ~/public_html/deployment/deploy.sh` — including dependency installation
+  and rollback, which the browser panel cannot do.
+- **`new` completes on Windows.** Creating a project no longer fails with
+  `Noderyx error: spawn EINVAL` while installing dependencies. Every `npm` and
+  `npx` call the CLI makes now goes through one Windows-aware runner, which also
+  fixes paths containing spaces and silences a Node deprecation warning.
+
+## Deploy to cPanel without a terminal
 
 Most cheap cPanel plans hide **Setup Node.js App → Create Application**. They
 also have no Run NPM Install button, and `npm` is missing from the shell PATH
@@ -49,6 +108,37 @@ Three modes cover what the account actually supports:
 - `--mode=static` — no Node at all: views compile to plain HTML
 
 Full walkthrough: [cPanel deployment](https://github.com/webscepts123/Noderyx-Framework/blob/main/deployment/cpanel/README.md).
+
+### Or one command, when the account has a terminal
+
+Every project ships a `deployment/` folder. On a plan with cPanel **Terminal**
+or SSH, updating the live site from GitHub is one line:
+
+```bash
+bash ~/public_html/deployment/deploy.sh
+```
+
+It fetches the branch with `git`, or the branch tarball where git is missing,
+replaces the application files, runs `npm ci --omit=dev` when `package.json`
+changed, restarts the app, and keeps a snapshot so `deploy.sh rollback` works.
+`.env`, `.htaccess`, `tmp/`, `node_modules/`, `storage/`, and
+`public/uploads/` are never replaced.
+
+```bash
+bash ~/public_html/deployment/deploy.sh init      # repository, branch, token
+bash ~/public_html/deployment/deploy.sh status    # what this account can do
+bash ~/public_html/deployment/deploy.sh cron      # the line for scheduled deploys
+```
+
+Private repositories work through a fine-grained token in
+`deployment/deploy.config`, which no deploy ever overwrites. To run the same
+command from GitHub after every push, add the SSH workflow:
+
+```bash
+npm run noderyx -- cpanel:deploy-script --workflow --repo=owner/name
+```
+
+Details: [deployment/README.md](https://github.com/webscepts123/Noderyx-Framework/blob/main/deployment/README.md).
 
 ## Everything included
 
@@ -90,7 +180,10 @@ resources/views/       Source .noderframe pages
 routes/                Web, API, and system route registration
 tests/                 Node.js test suite
 tooling/editors/       Bundled editor integrations
-deployment/            Hosting recipes
+deployment/
+  deploy.sh           One-command deploy from GitHub, run on the server
+  deploy.config       Server-owned repository, branch, and token (not committed)
+  after-deploy.sh     Optional: migrations and anything else a deploy should run
 ```
 
 Published applications continue to import from `noderyx-framework`; the
@@ -132,7 +225,8 @@ The CSS tokens are available as `--noderyx-violet`, `--runtime-cyan`,
 
 ## Start
 
-Use Node.js 20 or newer:
+Inside a project — or a clone of this repository, which is itself a working
+Noderyx application:
 
 ```bash
 npm install
@@ -150,22 +244,7 @@ npm run live -- auto
 
 See [live development and custom ports](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/LIVE-DEVELOPMENT.md).
 
-Create a complete new project:
-
-```powershell
-npx.cmd noderyx-framework@latest new my-website
-cd my-website
-npm.cmd run dev
-```
-
-Choose an optimized starting point with `--profile=saas`, `trading`, `blog`,
-`ecommerce`, `static`, or `enterprise`. For example:
-
-```powershell
-npx.cmd noderyx-framework@latest new shop --profile=ecommerce
-```
-
-See [installation and project scaffolding](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/INSTALLATION.md).
+To create a project of your own instead, see [Install](#install) above.
 
 Run the built-in lightweight QA audit at any time:
 
@@ -361,7 +440,10 @@ npm run noderyx -- cpanel:build --mode=proxy     # no Passenger on the host
 npm run noderyx -- cpanel:build --mode=static    # no Node.js on the host
 npm run noderyx -- cpanel:file install > noderyx-install.php
 npm run noderyx -- cpanel:file deploy --repo=owner/name > noderyx-deploy.php
+npm run noderyx -- cpanel:deploy-script --repo=owner/name --workflow
 ```
+
+Then, on the server: `bash ~/public_html/deployment/deploy.sh`
 
 **Generators**
 
@@ -625,6 +707,14 @@ Use `--mode=proxy` when the host has no Passenger but does have a Node binary: a
 cron job keeps the process alive and `index.php` bridges Apache to it. Use
 `--mode=static` when the host has no Node.js at all, which compiles the views to
 plain HTML and drops the backend.
+
+Where the account does have cPanel Terminal or SSH, prefer the shell route: it
+installs dependencies, which the browser panel cannot do, and it can roll back.
+
+```bash
+bash ~/public_html/deployment/deploy.sh init
+bash ~/public_html/deployment/deploy.sh
+```
 
 ## SEO and web performance
 

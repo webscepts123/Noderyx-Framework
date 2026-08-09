@@ -12,6 +12,16 @@ Copy-Item .env.example .env
 npm.cmd run dev
 ```
 
+The examples here spell out `npx.cmd` and `npm.cmd`, the form PowerShell needs.
+On macOS, Linux, and Git Bash, drop the `.cmd`:
+
+```bash
+npx noderyx-framework@latest new my-website
+cd my-website
+cp .env.example .env
+npm run dev
+```
+
 Generated npm scripts invoke the project's local `noderyx-framework`
 executable. A global `noderyx` command is not required.
 
@@ -136,3 +146,37 @@ npx.cmd noderyx-framework@latest new my-website
 The generated application includes `.noderframe` views, Cool.css, controllers,
 models, migrations, seeders, database configuration, Docker support, a cPanel/
 AWS-compatible server, and development scripts.
+
+## Add the framework to an existing project
+
+`new` scaffolds a whole application. To import `NoderyxApp` and the renderers
+into a project you already have, install the package as a dependency:
+
+```powershell
+npm.cmd i noderyx-framework
+```
+
+## Troubleshooting
+
+### `Noderyx error: spawn EINVAL` on Windows
+
+Creating a project with 0.6.0 or earlier fails at the "Installing npm
+dependencies" step, because Node.js refuses to launch the `npm.cmd` shim
+without a shell. Fixed in 0.7.0 — `@latest` picks up the fix:
+
+```powershell
+npx.cmd noderyx-framework@latest new my-website
+```
+
+On an older version, scaffold the files and install separately:
+
+```powershell
+npx.cmd noderyx-framework@0.6.0 new my-website --no-install
+cd my-website
+npm.cmd install
+```
+
+### `Missing script: "noderyx"`
+
+`npm run noderyx -- ...` only works inside a framework source checkout. From a
+generated project, call the binary: `npx noderyx <command>`.

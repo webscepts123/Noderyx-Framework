@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { run, windowsCommand } from "../framework/shell.js";
 
 test("generated npm scripts use the local framework executable", async () => {
   const root = await mkdtemp(join(tmpdir(), "noderyx-scaffold-"));
@@ -78,6 +79,37 @@ test("generated projects deploy to cPanel without Setup Node.js App", async () =
     assert.ok(existsSync(join(bundle, ".htaccess")));
     assert.ok(existsSync(join(bundle, "app", "Controllers", "HomeController.js")));
     assert.ok(!existsSync(join(bundle, ".env")), "secrets are created on the server, never bundled");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the Windows command line targets the shim without quoting its name", () => {
+  // A bare .cmd name must stay unquoted: wrapping it makes cmd.exe resolve
+  // %~dp0 inside the shim against the cwd, and npm then looks for npm-cli.js
+  // in the project being installed instead of its own directory.
+  assert.equal(windowsCommand("npm", ["install"]), 'npm.cmd "install"');
+  assert.equal(windowsCommand("npx", ["cap", "add", "android"]), 'npx.cmd "cap" "add" "android"');
+
+  // Arguments are quoted so spaces and cmd metacharacters stay inert.
+  assert.equal(windowsCommand("npm", ["install", "a b"]), 'npm.cmd "install" "a b"');
+  assert.equal(windowsCommand("npm", ["run", "x&calc"]), 'npm.cmd "run" "x&calc"');
+
+  // An executable that is a real path does need quoting.
+  assert.equal(windowsCommand("C:\\Program Files\\git\\git.exe", ["log"]), '"C:\\Program Files\\git\\git.exe" "log"');
+});
+
+test("run installs through npm from a directory whose path has spaces", async () => {
+  // Reproduces the two failures this path has hit on Windows: spawning the
+  // npm.cmd shim without a shell (EINVAL), and losing %~dp0 to a quoted name.
+  const root = await mkdtemp(join(tmpdir(), "noderyx run "));
+  try {
+    const cwd = join(root, "a project");
+    await mkdir(cwd);
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "probe", version: "1.0.0", private: true }));
+    // --version needs no registry, but still executes the shim end to end.
+    await run("npm", ["--version"], { cwd, stdio: "ignore" });
+    await run("npm", ["install", "--no-audit", "--no-fund", "--offline"], { cwd, stdio: "ignore" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

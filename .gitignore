@@ -39,6 +39,9 @@ platforms/mobile/www/
 platforms/native/
 platforms/cpanel/
 
+# Written on the server by deploy.sh; can hold a GitHub token
+deployment/deploy.config
+
 # General build output and temporary files
 dist/
 build/

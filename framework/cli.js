@@ -7,15 +7,21 @@ import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { compile } from "./compiler.js";
+import { run } from "./shell.js";
 import {
   buildCpanel,
   CPANEL_MODES,
+  deployConfig,
   deployPhp,
+  deployShell,
+  deployShellReadme,
+  deployWorkflow,
   doctorPhp,
   installerPhp,
   passengerHtaccess,
   proxyHtaccess,
-  staticHtaccess
+  staticHtaccess,
+  writeDeploymentKit
 } from "./cpanel.js";
 import { connect } from "./database.js";
 import { migrate, migrationStatus, rollback } from "./migrations.js";
@@ -146,21 +152,6 @@ async function frameworkUpdate() {
     }
     throw new Error(`Update failed; the previous framework was restored. Backup: ${backup}`);
   }
-}
-
-function run(executable, executableArgs, options = {}) {
-  const binary = process.platform === "win32" && /^(npm|npx)$/.test(executable)
-    ? `${executable}.cmd`
-    : executable;
-
-  return new Promise((done, fail) => {
-    const child = spawn(binary, executableArgs, { stdio: "inherit", shell: process.platform === "win32", ...options });
-    child.on("error", (error) => fail(new Error(`${executable} could not start: ${error.message}`)));
-    child.on("exit", (code) => {
-      if (code === 0) return done(0);
-      fail(new Error(`${executable} ${executableArgs.join(" ")} exited with code ${code}`));
-    });
-  });
 }
 
 const NATIVE_PLATFORMS = new Set(["android", "ios"]);
@@ -645,7 +636,50 @@ async function cpanelFile() {
     console.log(deployPhp(settings));
     return;
   }
+  if (what === "deploy.sh" || what === "shell" || what === "script") {
+    console.log(deployShell(settings));
+    return;
+  }
+  if (what === "config" || what === "deploy.config") {
+    console.log(deployConfig(settings));
+    return;
+  }
+  if (what === "workflow" || what === "actions") {
+    console.log(deployWorkflow(settings));
+    return;
+  }
+  if (what === "readme" || what === "deploy-readme") {
+    console.log(deployShellReadme(settings));
+    return;
+  }
   throw new Error("Example: noderyx cpanel:file install --user=myaccount > noderyx-install.php");
+}
+
+/**
+ * Write the shell deploy route into this repository, so the files reach the
+ * server on the next deploy and stay current afterwards.
+ */
+async function cpanelDeployScript() {
+  const settings = cpanelSettings();
+  const root = resolve(option("root", process.cwd()));
+  const written = await writeDeploymentKit(settings, root);
+
+  if (hasFlag("workflow") || hasFlag("github")) {
+    const target = join(root, ".github", "workflows", "deploy-cpanel.yml");
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, deployWorkflow(settings));
+    written.push(".github/workflows/deploy-cpanel.yml");
+  }
+
+  for (const file of written) console.log(`Created ${file}`);
+  console.log(`
+Commit deployment/, then on the server:
+
+  bash ~/${settings.directory}/deployment/deploy.sh init
+  bash ~/${settings.directory}/deployment/deploy.sh
+
+Read deployment/README.md for the rest. Add --workflow to also write the
+GitHub Actions workflow that runs the same command over SSH after a push.`);
 }
 
 async function withDatabase(action) {
@@ -1120,6 +1154,9 @@ public/generated/
 platforms/mobile/www/
 platforms/native/
 
+# Written on the server by deploy.sh; can hold a GitHub token
+deployment/deploy.config
+
 # General build output and temporary files
 dist/
 build/
@@ -1229,17 +1266,24 @@ npm run dev
     "packages/.gitkeep"
   ]) await writeFile(join(target, placeholder), "");
 
+  // deployment/ ships with the project so a cPanel account can update itself
+  // with one command once the repository is on GitHub.
+  await writeDeploymentKit({ repository: option("repo"), branch: option("branch", "main") }, target);
+
   console.log(`Created Noderyx project at ${target}`);
 
   if (!hasFlag("no-install")) {
     console.log("Installing npm dependencies...");
-    const installer = process.platform === "win32" ? "npm.cmd" : "npm";
-    const child = spawn(installer, ["install"], { cwd: target, stdio: "inherit" });
-    const code = await new Promise((done) => child.on("exit", done));
-    if (code !== 0) throw new Error("npm install failed; the project files were still created");
+    try {
+      // run() routes through cmd.exe on Windows; spawning npm.cmd directly
+      // fails with EINVAL on current Node releases.
+      await run("npm", ["install"], { cwd: target });
+    } catch (error) {
+      throw new Error(`npm install failed; the project files were still created. Run "cd ${requested} && npm install" to finish. ${error.message}`);
+    }
   }
 
-  console.log(`\nNext:\n  cd ${requested}\n  npm run dev\n\nFor Android and iOS:\n  npm run mobile:init\n  npm run mobile:android\n\nA .env with its own APP_KEY was created. Keep it out of version control.`);
+  console.log(`\nNext:\n  cd ${requested}\n  npm run dev\n\nFor Android and iOS:\n  npm run mobile:init\n  npm run mobile:android\n\nOn cPanel, once this is on GitHub:\n  bash ~/public_html/deployment/deploy.sh init\n  bash ~/public_html/deployment/deploy.sh\n\nA .env with its own APP_KEY was created. Keep it out of version control.`);
 }
 
 async function makeController() {
@@ -1485,7 +1529,10 @@ Noderyx Framework CLI
   noderyx cpanel:build [--mode=passenger|proxy|static] [--user=account] [--dir=public_html]
                        [--with-modules] [--repo=owner/name] [--branch=main]
                        [--node=/opt/alt/alt-nodejs20/root/usr/bin/node] [--port=3000] [--out=platforms/cpanel]
-  noderyx cpanel:file <htaccess|check|install|deploy> [--mode=passenger] [--user=account]
+  noderyx cpanel:file <htaccess|check|install|deploy|deploy.sh|config|workflow> [--mode=passenger] [--user=account]
+  noderyx cpanel:deploy-script [--repo=owner/name] [--branch=main] [--dir=public_html] [--workflow]
+                       # writes deployment/deploy.sh, run on the server as:
+                       #   bash ~/public_html/deployment/deploy.sh
 
   Native Android and iOS (real platform widgets, no WebView)
   noderyx native:init [--app-id=com.example.app] [--app-name=Name] [--no-install]
@@ -1540,6 +1587,7 @@ try {
   else if (command === "qa" || command === "check") await qaCheck();
   else if (command === "cpanel:build" || command === "build:cpanel" || command === "deploy:cpanel") await cpanelBuild();
   else if (command === "cpanel:file" || command === "cpanel:htaccess") await cpanelFile();
+  else if (command === "cpanel:deploy-script" || command === "deploy:init" || command === "cpanel:deploy") await cpanelDeployScript();
   else if (command === "build:mobile" || command === "mobile:build") await buildMobileBundle();
   else if (command === "mnoderframe:run" || command === "mobile:preview") await runMobileFrame();
   else if (command === "editor:install") await installEditorSupport();

@@ -1,11 +1,12 @@
 # Deploy Noderyx Framework on cPanel
 
-Two routes exist. Pick the one your account supports.
+Pick the route your account supports.
 
 | Your account | Route |
 | --- | --- |
 | Has **Setup Node.js App** | [Managed application](#managed-application) |
 | No **Setup Node.js App** | [Run from public_html](#run-from-public_html) |
+| Has **Terminal** or SSH | [One command](#update-from-github-with-one-command), after either of the above |
 
 Not sure which? Build a bundle, upload `noderyx-check.php`, and open it in a
 browser. It reports whether Passenger is present and which Node binaries exist.
@@ -49,6 +50,27 @@ the configured repository and branch are accepted.
 Pushes cannot install dependencies. If `package.json` changed, upload a fresh
 `node_modules` or rebuild the bundle with `--with-modules`.
 
+### Update from GitHub with one command
+
+When the account has cPanel **Terminal** or SSH, this is the better route. It
+installs dependencies, which the browser panel cannot do, and it can roll back.
+
+    bash ~/public_html/deployment/deploy.sh init
+    bash ~/public_html/deployment/deploy.sh
+
+`init` writes `deployment/deploy.config` with the repository, the branch, and a
+token for a private repository. No deploy replaces that file. The deploy itself
+fetches with `git`, or with the branch tarball where git is missing, replaces
+the application files, runs `npm ci --omit=dev` when `package.json` changed,
+restarts, and snapshots the previous state under `~/.noderyx/backups`.
+
+    deploy.sh status     what this account can do, and the last deploy
+    deploy.sh rollback   restore the snapshot from before the last deploy
+    deploy.sh logs       the last 50 lines of tmp/deploy.log
+    deploy.sh cron       the cron line for scheduled deploys
+
+Full reference: [deployment/README.md](../README.md).
+
 ### Modes
 
     --mode=passenger   Default. The host runs Phusion Passenger but hides the
@@ -78,13 +100,21 @@ Print one file without rebuilding, to add a browser tool to a live deployment:
 
     npm run noderyx -- cpanel:file install --user=youraccount > noderyx-install.php
     npm run noderyx -- cpanel:file deploy --repo=owner/name > noderyx-deploy.php
+    npm run noderyx -- cpanel:file deploy.sh --repo=owner/name > deploy.sh
+    npm run noderyx -- cpanel:file workflow --repo=owner/name
     npm run noderyx -- cpanel:file htaccess --mode=passenger --user=youraccount
     npm run noderyx -- cpanel:file check
+
+Write the whole shell deploy route into a repository, so it reaches the server
+with the next deploy and stays current afterwards:
+
+    npm run noderyx -- cpanel:deploy-script --repo=owner/name --workflow
 
 ### What the bundle contains
 
     .htaccess            Starts the app and blocks source files from the web
     app.js               Startup file Passenger looks for; loads server.js
+    deployment/deploy.sh One-command deploy from GitHub, for accounts with a shell
     noderyx-install.php  Browser installer: .env, .htaccess, APP_KEY
     noderyx-deploy.php   Browser deploy panel and GitHub webhook endpoint
     noderyx-check.php    Read-only environment report, key-protected
@@ -168,3 +198,7 @@ changed, and restart:
 - Passenger mode: save `tmp/restart.txt`.
 - Proxy mode: run `noderyx-stop.sh`, or delete `tmp/noderyx.pid` and wait for
   the next cron tick.
+
+With a shell, `bash ~/public_html/deployment/deploy.sh` does all of this in one
+step, including the restart. It works for a managed application too: point it at
+the application folder instead of `public_html`.

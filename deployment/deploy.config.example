@@ -1,0 +1,24 @@
+# Noderyx deploy settings for this account.
+#
+# Copy this file to deployment/deploy.config on the server and keep it at
+# chmod 600. A deploy never replaces it, so it is the right place for anything
+# that belongs to this server rather than to the repository.
+#
+# On the server, "bash deployment/deploy.sh init" writes it for you.
+
+REPOSITORY="webscepts123/Noderyx-Framework"
+BRANCH="main"
+MODE="passenger"
+
+# Leave empty to detect the Node binary automatically.
+NODE_BIN=""
+
+# Fine-grained personal access token with read access to the repository.
+# Only needed for a private repository.
+GITHUB_TOKEN=""
+
+# auto installs only when package.json changed; always or never override that.
+INSTALL="auto"
+
+# Extra paths this deploy must not replace, relative to the application root.
+KEEP=()

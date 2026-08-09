@@ -7,14 +7,19 @@ import test from "node:test";
 import {
   buildCpanel,
   cpanelOptions,
+  deployConfig,
   deployPhp,
+  deployShell,
+  deployShellReadme,
+  deployWorkflow,
   doctorPhp,
   installerPhp,
   passengerHtaccess,
   phpBridge,
   proxyHtaccess,
   startScript,
-  staticHtaccess
+  staticHtaccess,
+  writeDeploymentKit
 } from "../framework/cpanel.js";
 
 async function workspace() {
@@ -55,7 +60,7 @@ test("Passenger .htaccess comments out the Node path when it is unknown", () => 
 
 test("Generated .htaccess keeps application source unreadable inside public_html", () => {
   for (const htaccess of [passengerHtaccess({ user: "a" }), proxyHtaccess({ user: "a" })]) {
-    assert.match(htaccess, /RewriteRule \^\(app\|database\|framework\|node_modules\|packages\|resources\|routes\|tests\|tmp\)/);
+    assert.match(htaccess, /RewriteRule \^\(app\|database\|deployment\|framework\|node_modules\|packages\|resources\|routes\|tests\|tmp\)/);
     assert.match(htaccess, /RewriteRule \(\^\|\/\)\\\.\(env\|git\|npmrc\|htpasswd\) - \[F,L\]/);
     // Only paths that exist on disk are refused, so /app/dashboard still routes.
     assert.match(htaccess, /RewriteCond %\{REQUEST_FILENAME\} -f \[OR\]\n\s*RewriteCond %\{REQUEST_FILENAME\} -d/);
@@ -159,6 +164,115 @@ test("Deploy panel preserves server-owned files and validates the repository nam
   assert.match(php, /\^\[\\w\.-\]\+\/\[\\w\.-\]\+\$/);
   assert.match(php, /codeload\.github\.com/);
   assert.match(php, /NODERYX_MAX_ARCHIVE/);
+});
+
+test("Deploy script runs from a copy of itself, because a deploy rewrites it", () => {
+  const script = deployShell({ repository: "owner/repo" });
+  assert.match(script, /NODERYX_RELAUNCHED/);
+  assert.match(script, /cp "\$__self" "\$__copy"/);
+  assert.match(script, /SELF="\$\{NODERYX_SELF:-/);
+  assert.doesNotMatch(script, /\r/);
+});
+
+test("Deploy script keeps server-owned files and drops repository-only ones", () => {
+  const script = deployShell({ user: "acct" });
+  for (const kept of ['".env"', '".htaccess"', '"tmp/"', '"node_modules/"', '"deployment/deploy.config"']) {
+    assert.ok(script.includes(kept), `deploy.sh should preserve ${kept}`);
+  }
+  for (const skipped of ['".git/"', '".github/"']) {
+    assert.ok(script.includes(skipped), `deploy.sh should skip ${skipped}`);
+  }
+  assert.match(script, /rsync "\$\{flags\[@\]\}" "\$\{excludes\[@\]\}"/);
+  // A branch with no deployment/ of its own must not delete the script.
+  assert.match(script, /\[ -d "\$RELEASE_DIR\/deployment" \] \|\| excludes\+=\("--exclude=\/deployment\/"\)/);
+});
+
+test("Deploy script descends into directories that hold a preserved path", () => {
+  const script = deployShell({});
+  // Without this, the rsync-less fallback would skip all of deployment/ and
+  // never update deploy.sh itself.
+  assert.match(script, /holds_preserved\(\)/);
+  assert.match(script, /copy_tree "\$entry" "\$destination\/\$base" "\$path\/\$base"/);
+});
+
+test("Deploy script prefers git and falls back to the branch tarball", () => {
+  const script = deployShell({ repository: "owner/repo", branch: "release" });
+  assert.match(script, /BRANCH="release"/);
+  assert.match(script, /REPOSITORY="owner\/repo"/);
+  assert.match(script, /git clone --depth=1/);
+  assert.match(script, /codeload\.github\.com/);
+  assert.match(script, /x-access-token:%s@github\.com/);
+  assert.match(script, /No git, curl, or wget on this account/);
+});
+
+test("Deploy script restarts the way the mode requires", () => {
+  const passenger = deployShell({ mode: "passenger" });
+  assert.match(passenger, /MODE="passenger"/);
+  assert.match(passenger, /date '\+%F %T' > "\$APP_DIR\/tmp\/restart\.txt"/);
+
+  const proxy = deployShell({ mode: "proxy", port: 4321 });
+  assert.match(proxy, /MODE="proxy"/);
+  assert.match(proxy, /noderyx-stop\.sh/);
+  assert.match(proxy, /APP_PORT="4321"/);
+});
+
+test("Deploy script installs only when the dependency fingerprint changed", () => {
+  const script = deployShell({});
+  assert.match(script, /dependency_fingerprint\(\)/);
+  assert.match(script, /"\$NPM_BIN" "\$command" --omit=dev --no-audit --no-fund/);
+  // npm ci refuses a drifted lockfile; the deploy must not die on that alone.
+  assert.match(script, /"\$NPM_BIN" install --omit=dev --no-audit --no-fund/);
+  assert.match(script, /npm was not found/);
+});
+
+test("Deploy settings and workflow describe the same one-line command", () => {
+  const config = deployConfig({ repository: "owner/repo", branch: "main" });
+  assert.match(config, /REPOSITORY="owner\/repo"/);
+  assert.match(config, /GITHUB_TOKEN=""/);
+  assert.match(config, /KEEP=\(\)/);
+
+  const workflow = deployWorkflow({ branch: "main", directory: "public_html/shop" });
+  assert.match(workflow, /bash ~\/public_html\/shop\/deployment\/deploy\.sh --branch=main/);
+  assert.match(workflow, /secrets\.CPANEL_KEY/);
+  assert.match(workflow, /ssh-keyscan/);
+  // Nothing outside GitHub and the host should take part in a deployment.
+  assert.doesNotMatch(workflow, /uses: (?!actions\/)/);
+
+  const readme = deployShellReadme({ directory: "public_html" });
+  assert.match(readme, /bash ~\/public_html\/deployment\/deploy\.sh/);
+  assert.match(readme, /rollback/);
+});
+
+test("Deployment kit lands in an application root, guarded from the web", async (t) => {
+  const out = await workspace();
+  t.after(() => rm(out, { recursive: true, force: true }));
+
+  const written = await writeDeploymentKit({ user: "acct", repository: "owner/repo" }, out);
+
+  assert.deepEqual(written, [
+    "deployment/deploy.sh",
+    "deployment/deploy.config.example",
+    "deployment/README.md",
+    "deployment/.htaccess"
+  ]);
+  assert.match(await readFile(join(out, "deployment", ".htaccess"), "utf8"), /Require all denied/);
+  assert.match(await readFile(join(out, "deployment", "deploy.sh"), "utf8"), /^#!\/usr\/bin\/env bash/);
+});
+
+test("Bundles carry the one-command deploy route", async (t) => {
+  const out = await workspace();
+  t.after(() => rm(out, { recursive: true, force: true }));
+
+  const result = await buildCpanel({ out, user: "acct", directory: "public_html/shop" });
+
+  assert.ok(existsSync(join(out, "deployment", "deploy.sh")));
+  assert.ok(existsSync(join(out, "deployment", "deploy.config.example")));
+  assert.ok(result.files.includes("deployment/deploy.sh"));
+  assert.equal(new Set(result.files).size, result.files.length, "the file list must not repeat entries");
+  assert.ok(result.notes.some((note) => note.includes("bash ~/public_html/shop/deployment/deploy.sh")));
+
+  const readme = await readFile(join(out, "README-CPANEL.md"), "utf8");
+  assert.match(readme, /bash ~\/public_html\/shop\/deployment\/deploy\.sh init/);
 });
 
 test("Proxy .htaccess lets the browser tools run as PHP instead of bridging them", () => {

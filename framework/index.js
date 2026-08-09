@@ -17,8 +17,12 @@ export { buildMobile, capacitorConfig, mobileOptions, webDirectory } from "./mob
 export {
   buildCpanel,
   cpanelOptions,
+  deployConfig,
   deployPhp,
   deployReadme,
+  deployShell,
+  deployShellReadme,
+  deployWorkflow,
   doctorPhp,
   installerPhp,
   passengerHtaccess,
@@ -28,7 +32,9 @@ export {
   startupShim,
   staticHtaccess,
   stopScript,
+  writeDeploymentKit,
   CPANEL_MODES,
+  DEPLOY_PRESERVED,
   NODE_CANDIDATES
 } from "./cpanel.js";
 export { solutionProfile, solutionProfiles } from "./profiles.js";
