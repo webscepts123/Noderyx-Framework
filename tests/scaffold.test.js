@@ -144,6 +144,23 @@ test("the Windows command line targets the shim without quoting its name", () =>
   assert.equal(windowsCommand("C:\\Program Files\\git\\git.exe", ["log"]), '"C:\\Program Files\\git\\git.exe" "log"');
 });
 
+test("run spawns the node binary from a path that has spaces", async () => {
+  // process.execPath is "C:\Program Files\nodejs\node.exe" on a default Windows
+  // install. Routing it through cmd.exe split it at the space, which broke the
+  // verification step of `noderyx update` and rolled every update back.
+  await run(process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore" });
+  assert.match(process.execPath, /node(\.exe)?$/);
+
+  // The -e payload reaches node intact rather than being re-parsed by a shell.
+  await run(process.execPath, [
+    "--input-type=module",
+    "-e",
+    "import('node:path').then(m=>{if(typeof m.join!=='function')process.exit(1)})"
+  ], { stdio: "ignore" });
+
+  await assert.rejects(run(process.execPath, ["-e", "process.exit(3)"], { stdio: "ignore" }), /exited with code 3/);
+});
+
 test("run installs through npm from a directory whose path has spaces", async () => {
   // Reproduces the two failures this path has hit on Windows: spawning the
   // npm.cmd shim without a shell (EINVAL), and losing %~dp0 to a quoted name.

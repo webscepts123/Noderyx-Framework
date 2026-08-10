@@ -24,12 +24,15 @@ export function windowsCommand(executable, executableArgs = []) {
 }
 
 export function run(executable, executableArgs = [], options = {}) {
-  const windows = process.platform === "win32";
-  const command = windows ? windowsCommand(executable, executableArgs) : executable;
-  const args = windows ? [] : executableArgs;
+  // Only the .cmd shims need cmd.exe. Anything else — node above all, which
+  // lives under "C:\Program Files" on a default install — is spawned directly,
+  // so no path or argument has to survive a trip through shell quoting.
+  const shell = process.platform === "win32" && WINDOWS_SHIMS.test(executable);
+  const command = shell ? windowsCommand(executable, executableArgs) : executable;
+  const args = shell ? [] : executableArgs;
 
   return new Promise((done, fail) => {
-    const child = spawn(command, args, { stdio: "inherit", shell: windows, ...options });
+    const child = spawn(command, args, { stdio: "inherit", shell, ...options });
     child.on("error", (error) => fail(new Error(`${executable} could not start: ${error.message}`)));
     child.on("exit", (code) => {
       if (code === 0) return done(0);

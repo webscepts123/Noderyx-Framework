@@ -176,6 +176,36 @@ cd my-website
 npm.cmd install
 ```
 
+### A project generated before 0.7.1 stays on an old framework
+
+Versions up to 0.7.0 wrote `"noderyx-framework": "^0.1.0"` into every generated
+`package.json`. A caret on a `0.x` version stops before the next minor, so npm
+resolves it to 0.1.2 no matter what `@latest` installed, and the generated
+config then imports helpers that runtime does not export:
+
+```
+SyntaxError: The requested module 'noderyx-framework' does not provide an
+export named 'securityProfile'
+```
+
+`npm run framework:update` cannot repair this on Windows. It runs the *installed*
+0.1.x command, whose verification step spawns `node.exe` through `cmd.exe`
+without quoting the path, so it fails on `C:\Program Files\nodejs` and rolls the
+update back:
+
+```
+'C:\Program' is not recognized as an internal or external command
+```
+
+Install over it instead, and use a range that keeps receiving minor releases —
+this is what 0.7.1 and later generate:
+
+```powershell
+npm.cmd install noderyx-framework@latest
+npm.cmd pkg set "dependencies.noderyx-framework=>=0.7.1 <1.0.0"
+npm.cmd install
+```
+
 ### `Missing script: "noderyx"`
 
 `npm run noderyx -- ...` only works inside a framework source checkout. From a
