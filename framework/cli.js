@@ -83,6 +83,15 @@ async function loadOptionalConfig() {
   return {};
 }
 
+async function frameworkVersion() {
+  const manifest = fileURLToPath(new URL("../package.json", import.meta.url));
+  try {
+    const { version } = JSON.parse(await readFile(manifest, "utf8"));
+    if (version) return version;
+  } catch {}
+  throw new Error(`Could not read the framework version from ${manifest}`);
+}
+
 async function frameworkUpdate() {
   const manifestPath = resolve("package.json");
   const lockPath = resolve("package-lock.json");
@@ -776,9 +785,12 @@ async function scaffoldProject() {
 
   const frameworkRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
   const localFramework = hasFlag("local") || !frameworkRoot.toLowerCase().includes("node_modules");
+  // The generated config imports whatever this version exports, so the range has
+  // to start here. A caret on a 0.x version stops at the next minor, which would
+  // strand the project on today's release; keep minors flowing until 1.0.
   const frameworkDependency = localFramework
     ? `file:${frameworkRoot.replaceAll("\\", "/")}`
-    : "^0.1.0";
+    : `>=${await frameworkVersion()} <1.0.0`;
 
   const files = {
     ".vscode/extensions.json": `${JSON.stringify({

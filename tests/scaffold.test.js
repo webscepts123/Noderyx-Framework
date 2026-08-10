@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { run, windowsCommand } from "../framework/shell.js";
@@ -79,6 +79,51 @@ test("generated projects deploy to cPanel without Setup Node.js App", async () =
     assert.ok(existsSync(join(bundle, ".htaccess")));
     assert.ok(existsSync(join(bundle, "app", "Controllers", "HomeController.js")));
     assert.ok(!existsSync(join(bundle, ".env")), "secrets are created on the server, never bundled");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a project installed from npm depends on the version that generated it", async () => {
+  // The generated config imports whatever the installed framework exports, so a
+  // stale hardcoded range hands every new project a runtime that predates them.
+  // Scaffolding has to run from a node_modules copy to take the published path.
+  const root = await mkdtemp(join(tmpdir(), "noderyx-published-"));
+  try {
+    const frameworkRoot = fileURLToPath(new URL("..", import.meta.url));
+    const installed = join(root, "node_modules", "noderyx-framework");
+    await mkdir(installed, { recursive: true });
+    await cp(join(frameworkRoot, "framework"), join(installed, "framework"), { recursive: true });
+    await cp(join(frameworkRoot, "package.json"), join(installed, "package.json"));
+    // package.json ships public/*.css and public/*.js; scaffolding copies them.
+    await cp(join(frameworkRoot, "public"), join(installed, "public"), {
+      recursive: true,
+      filter: (source) => !source.endsWith(`${sep}generated`)
+    });
+
+    const work = join(root, "work");
+    await mkdir(work);
+    const result = spawnSync(process.execPath, [join(installed, "framework", "cli.js"), "new", "example", "--no-install"], {
+      cwd: work,
+      encoding: "utf8"
+    });
+    assert.equal(result.status, 0, result.stderr);
+
+    const { version } = JSON.parse(await readFile(join(frameworkRoot, "package.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(join(work, "example", "package.json"), "utf8"));
+    const range = manifest.dependencies["noderyx-framework"];
+    assert.doesNotMatch(range, /^(file|link):/, "a published project cannot point at a local path");
+    // A caret on a 0.x version stops at the next minor, stranding the project.
+    assert.equal(range, `>=${version} <1.0.0`);
+
+    // Every name the config imports has to exist in that runtime.
+    const config = await readFile(join(work, "example", "noderyx.config.js"), "utf8");
+    const [, imported] = config.match(/import \{([^}]+)\} from "noderyx-framework"/) ?? [];
+    assert.ok(imported, "the generated config imports from noderyx-framework");
+    const framework = await import(new URL("../framework/index.js", import.meta.url));
+    for (const name of imported.split(",").map((entry) => entry.trim()).filter(Boolean)) {
+      assert.ok(name in framework, `the framework does not export ${name}`);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

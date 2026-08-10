@@ -540,7 +540,12 @@ export class NoderyxApp {
 
   async handleError(error, request, response) {
     const status = errorStatus(error);
-    console.error(`[Noderyx ${status}]`, error);
+    // Without the request line a 404 says nothing about what was missing. A
+    // deliberate 4xx is a normal outcome, so its stack is noise; keep the full
+    // trace for anything the application did not raise on purpose.
+    const target = `${request.method ?? "?"} ${(request.url ?? "").slice(0, 200)}`;
+    if (status < 500 && error?.expose) console.error(`[Noderyx ${status}] ${target} — ${error.message}`);
+    else console.error(`[Noderyx ${status}] ${target}`, error);
     if (response.headersSent) return response.end();
 
     if (this.errorHandler) {

@@ -73,3 +73,34 @@ test("a required missing APP_KEY renders an actionable bootstrap error", async (
   assert.equal(script.status, 200);
   assert.match(script.headers.get("content-type"), /^text\/javascript/);
 });
+
+test("the error log names the request and keeps stacks for real failures", async (context) => {
+  const app = noderyx({
+    views: fileURLToPath(new URL("../resources/views", import.meta.url)),
+    public: fileURLToPath(new URL("../public", import.meta.url))
+  });
+  app.get("/broken", () => { throw new Error("Function exploded"); });
+
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  const lines = [];
+  const original = console.error;
+  console.error = (...parts) => lines.push(parts);
+  try {
+    await fetch(`${origin}/settings/profile`);
+    await fetch(`${origin}/broken`);
+  } finally {
+    console.error = original;
+  }
+
+  // A 404 that says only "Page not found" leaves nobody able to act on it.
+  const [notFound, failed] = lines;
+  assert.equal(notFound.length, 1, "a deliberate 404 logs no stack trace");
+  assert.match(notFound[0], /^\[Noderyx 404\] GET \/settings\/profile — Page not found$/);
+
+  assert.match(failed[0], /^\[Noderyx 500\] GET \/broken$/);
+  assert.equal(failed[1].message, "Function exploded");
+});

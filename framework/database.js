@@ -4,10 +4,16 @@ function assertConfig(config, fields) {
   }
 }
 
+// `type` picks the driver here; it is not a driver option. mysql2 warns about
+// unknown keys today and has said it will throw on them, so it never travels.
+function driverOptions({ type, ...options }) {
+  return options;
+}
+
 export async function mysql(config) {
   assertConfig(config, ["host", "user", "database"]);
   const { createPool } = await import("mysql2/promise");
-  const pool = createPool(config);
+  const pool = createPool(driverOptions(config));
   return {
     kind: "mysql",
     query: async (sql, values = []) => {
@@ -35,7 +41,7 @@ export async function mysql(config) {
 export async function postgres(config) {
   assertConfig(config, ["connectionString"]);
   const { Pool } = await import("pg");
-  const pool = new Pool(config);
+  const pool = new Pool(driverOptions(config));
   return {
     kind: "postgres",
     query: async (sql, values = []) => (await pool.query(sql, values)).rows,
