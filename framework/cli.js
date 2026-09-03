@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync, watch as watchFs } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { homedir } from "node:os";
@@ -505,6 +505,50 @@ async function checkPort() {
   if (!available) process.exitCode = 1;
 }
 
+// Watches a file or a directory tree, calling onChange for any change beneath
+// it. Node's own --watch mode is deliberately not used here: it runs the app as
+// a grandchild process that is routinely orphaned on Ctrl+C or mid-restart, and
+// every orphan keeps holding its TCP port, which is what pushes `serve` onto a
+// new port and leaves the browser pointed at a dead one.
+function watchTree(root, onChange) {
+  const watched = new Set();
+  const add = (path) => {
+    if (watched.has(path)) return;
+    watched.add(path);
+    try {
+      watchFs(path, (_event, name) => {
+        onChange();
+        if (!name) return;
+        const child = join(path, name);
+        try {
+          if (statSync(child).isDirectory()) add(child);
+        } catch {}
+      });
+    } catch {}
+    let entries = [];
+    try {
+      entries = readdirSync(path, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === "node_modules" || entry.name === ".git") continue;
+      add(join(path, entry.name));
+    }
+  };
+  add(root);
+}
+
+async function waitForPort(port, host, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await portAvailable(port, host)) return true;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+  return false;
+}
+
 async function serve(forceWatch = false) {
   const [positionalPort] = positional();
   const requestedPort = option("port", positionalPort ?? process.env.PORT ?? "3000");
@@ -512,50 +556,117 @@ async function serve(forceWatch = false) {
   const port = await selectPort(requestedPort, host, hasFlag("strict-port"));
   const entry = resolve(option("entry", "server.js"));
   const watch = forceWatch || hasFlag("watch");
-  const nodeArgs = [];
-
-  if (watch) {
-    for (const watchTarget of [
-      "server.js",
-      "noderyx.config.js",
-      "untitled.config.js",
-      ".env",
-      "app",
-      "database",
-      "packages",
-      "framework",
-      "resources",
-      "public",
-      "database/migrations"
-    ]) {
-      if (existsSync(resolve(watchTarget))) nodeArgs.push(`--watch-path=${watchTarget}`);
-    }
-  }
 
   const displayHost = host === "0.0.0.0" ? "localhost" : host;
   console.log(`${watch ? "Live development" : "Noderyx server"}: http://${displayHost}:${port}`);
   if (Number(requestedPort) !== port) console.log(`Requested port was unavailable; selected ${port}.`);
   console.log(`Watching: ${watch ? "enabled" : "disabled"}`);
 
-  nodeArgs.push(entry);
-  const child = spawn(process.execPath, nodeArgs, {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      HOST: host,
-      PORT: String(port),
-      NODE_ENV: process.env.NODE_ENV ?? "development"
-    }
+  const childEnv = {
+    ...process.env,
+    HOST: host,
+    PORT: String(port),
+    NODE_ENV: process.env.NODE_ENV ?? "development"
+  };
+
+  let child = null;
+  let restarting = false;
+  let shuttingDown = false;
+
+  function startChild() {
+    child = spawn(process.execPath, [entry], { stdio: "inherit", env: childEnv });
+    child.on("error", (error) => {
+      console.error(`Unable to start Noderyx server: ${error.message}`);
+      if (!watch) process.exitCode = 1;
+    });
+    child.on("exit", (code, signal) => {
+      if (shuttingDown || restarting) return;
+      if (!watch) {
+        if (signal) process.kill(process.pid, signal);
+        else process.exitCode = code ?? 0;
+        return;
+      }
+      // A crash in watch mode should not end the session: hold the port and
+      // wait for the next save so the developer keeps the same URL.
+      console.error(`Server stopped (${signal ?? `exit ${code}`}); waiting for a file change.`);
+      child = null;
+    });
+  }
+
+  function stopChild(signal) {
+    if (!child) return Promise.resolve();
+    const dying = child;
+    child = null;
+    return new Promise((done) => {
+      const force = setTimeout(() => dying.kill("SIGKILL"), 3000);
+      force.unref();
+      dying.once("exit", () => {
+        clearTimeout(force);
+        done();
+      });
+      dying.kill(signal);
+    });
+  }
+
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await stopChild(signal === "SIGINT" ? "SIGINT" : "SIGTERM");
+    process.exit(process.exitCode ?? 0);
+  }
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("exit", () => {
+    if (child) child.kill("SIGKILL");
   });
 
-  child.on("error", (error) => {
-    console.error(`Unable to start Noderyx server: ${error.message}`);
-    process.exitCode = 1;
-  });
-  child.on("exit", (code, signal) => {
-    if (signal) process.kill(process.pid, signal);
-    else process.exitCode = code ?? 0;
-  });
+  startChild();
+  if (!watch) return;
+
+  let pending = false;
+  let debounce = null;
+
+  async function restart() {
+    if (shuttingDown) return;
+    if (restarting) {
+      pending = true;
+      return;
+    }
+    restarting = true;
+    console.log("Change detected; restarting Noderyx server");
+    await stopChild("SIGTERM");
+    // Let the OS reclaim the listening socket so the restart lands on the same
+    // port instead of drifting to the next free one.
+    await waitForPort(port, host, 5000);
+    restarting = false;
+    if (shuttingDown) return;
+    startChild();
+    if (pending) {
+      pending = false;
+      queueRestart();
+    }
+  }
+
+  function queueRestart() {
+    clearTimeout(debounce);
+    debounce = setTimeout(restart, 150);
+  }
+
+  for (const target of [
+    "server.js",
+    "noderyx.config.js",
+    "untitled.config.js",
+    ".env",
+    "app",
+    "database",
+    "packages",
+    "framework",
+    "resources",
+    "public"
+  ]) {
+    if (existsSync(resolve(target))) watchTree(resolve(target), queueRestart);
+  }
 }
 
 async function build() {
@@ -870,9 +981,35 @@ await loadPackages(app, config.packages, { config });
 const requestedPort = String(process.env.PORT ?? 3000);
 const socketPath = /^\\d+$/.test(requestedPort) ? null : requestedPort;
 const host = process.env.HOST ?? "0.0.0.0";
+const port = Number(requestedPort);
+let closing = false;
 
 if (socketPath) app.listen(socketPath, () => console.log(\`Listening on \${socketPath}\`));
-else app.listen(Number(requestedPort), host, () => console.log(\`Running at http://localhost:\${requestedPort}\`));
+else {
+  let bindAttempts = 0;
+  const server = app.listen(port, host, () => console.log(\`Running at http://localhost:\${port}\`));
+  server.on("error", (error) => {
+    // A watch restart can fire before the old process frees the socket. Retry
+    // the same port instead of moving the app to a different one, which would
+    // leave the browser tab you already opened pointing at nothing.
+    if (!closing && error.code === "EADDRINUSE" && bindAttempts++ < 20) {
+      setTimeout(() => server.listen(port, host), 250).unref();
+      return;
+    }
+    console.error(\`Server error: \${error.message}\`);
+    process.exit(1);
+  });
+  const stop = () => {
+    if (closing) return;
+    closing = true;
+    server.close(() => process.exit(0));
+    // The dev live-reload stream never ends on its own and would block close.
+    server.closeAllConnections?.();
+    setTimeout(() => process.exit(0), 3000).unref();
+  };
+  process.on("SIGTERM", stop);
+  process.on("SIGINT", stop);
+}
 `,
     "app/Controllers/HomeController.js": `import { Controller } from "noderyx-framework";
 

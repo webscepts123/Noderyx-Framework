@@ -31,11 +31,13 @@ await loadPackages(app, config.packages, { config });
 const requestedPort = String(process.env.PORT ?? 3000);
 const socketPath = /^\d+$/.test(requestedPort) ? null : requestedPort;
 const host = process.env.HOST ?? "0.0.0.0";
-let activePort = Number(requestedPort);
-let portAttempts = 0;
-const server = socketPath ? app.listen(socketPath) : app.listen(activePort, host);
+const port = Number(requestedPort);
+let bindAttempts = 0;
+let closing = false;
+const server = socketPath ? app.listen(socketPath) : app.listen(port, host);
 
 server.on("listening", () => {
+  bindAttempts = 0;
   if (socketPath) {
     console.log(`Noderyx Framework listening on ${socketPath}`);
     return;
@@ -46,21 +48,27 @@ server.on("listening", () => {
 });
 
 server.on("error", (error) => {
-  const retryable = !socketPath && (error.code === "EADDRINUSE" || error.code === "EACCES");
-  if (process.env.NODE_ENV !== "production" && retryable && portAttempts < 10) {
-    portAttempts += 1;
-    activePort += 1;
-    console.log(`Port unavailable; trying http://localhost:${activePort}`);
-    server.listen(activePort, host);
+  // A watch restart can fire before the previous process has released the
+  // socket. Retry the *same* port for a few seconds rather than drifting to a
+  // different one, which would strand the browser tab already open on this URL.
+  if (!closing && !socketPath && error.code === "EADDRINUSE" && bindAttempts < 20) {
+    bindAttempts += 1;
+    setTimeout(() => server.listen(port, host), 250).unref();
     return;
   }
   console.error(`Noderyx server error: ${error.message}`);
-  process.exitCode = 1;
+  process.exit(1);
 });
 
 function shutdown(signal) {
+  if (closing) return;
+  closing = true;
   console.log(`${signal} received; closing server`);
-  server.close((error) => process.exit(error ? 1 : 0));
+  server.close(() => process.exit(0));
+  // The live-reload stream is a long-lived connection that keeps server.close
+  // from ever completing, so force idle and open sockets shut.
+  server.closeAllConnections?.();
+  setTimeout(() => process.exit(0), 3000).unref();
 }
 
 process.on("SIGTERM", () => shutdown("SIGTERM"));
