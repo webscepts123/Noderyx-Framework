@@ -145,7 +145,8 @@ test("buildMobile produces a self-contained Android and iOS web bundle", async (
   for (const file of [
     "manifest.webmanifest",
     "sw.js",
-    "offline.mnoderframe",
+    "index.html",
+    "offline.html",
     "public/cool.css",
     "public/noderyx-native.js",
     "public/noderyx-router.js",
@@ -155,8 +156,25 @@ test("buildMobile produces a self-contained Android and iOS web bundle", async (
     const contents = await readFile(join(result.www, file));
     assert.ok(contents.length > 0, `${file} should be written`);
   }
-  await assert.rejects(() => readFile(join(result.www, "index.html")), /ENOENT/);
-  await assert.rejects(() => readFile(join(result.www, "offline.html")), /ENOENT/);
+  // Capacitor requires index.html; it is the shell that boots the router.
+  const shell = await readFile(join(result.www, "index.html"), "utf8");
+  assert.match(shell, /data-noderyx-shell/);
+  assert.match(shell, /noderyx-boot\.js/);
+  assert.match(shell, /noderyx-router\.js/);
+  assert.match(shell, /href="\/public\/cool\.css"/);
+  assert.match(shell, /Content-Security-Policy/);
+
+  // The bundle's CSP forbids inline handlers, so the offline page has none.
+  const offline = await readFile(join(result.www, "offline.html"), "utf8");
+  assert.doesNotMatch(offline, /onclick|Ã|â€/);
+  assert.match(offline, /Offline — Demo/);
+
+  const boot = await readFile(join(result.www, "public/noderyx-boot.js"), "utf8");
+  assert.match(boot, /NODERYX_APP = "default"/);
+  assert.match(boot, /NODERYX_REMOTE_UI = false/);
+
+  const manifestJson = JSON.parse(await readFile(join(result.www, "manifest.webmanifest"), "utf8"));
+  assert.equal(manifestJson.start_url, "/");
 
   const capacitor = JSON.parse(await readFile(join(project, "capacitor.config.json"), "utf8"));
   assert.equal(capacitor.appId, "com.example.demo");

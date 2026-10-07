@@ -25,7 +25,7 @@ import {
 } from "./cpanel.js";
 import { connect } from "./database.js";
 import { migrate, migrationStatus, rollback } from "./migrations.js";
-import { buildMobile, webDirectory } from "./mobile.js";
+import { buildMobile, mobileAppConfig, mobileApps, mobileOptions, platformDirectory, webDirectory } from "./mobile.js";
 import { buildNative, initNativeProject } from "./native.js";
 import { solutionProfile, solutionProfiles } from "./profiles.js";
 import { formatQaReport, inspectProject } from "./qa.js";
@@ -190,8 +190,28 @@ const CAPACITOR_PACKAGES = [
   "@capacitor/browser"
 ];
 
-async function buildMobileBundle(overrides = {}) {
-  const config = await loadOptionalConfig();
+/**
+ * The apps a command targets. `--app=admin` picks one; without it a build
+ * covers every app in mobile.apps, while run/open/sync need exactly one.
+ * A project without mobile.apps has a single unnamed app (null).
+ */
+function selectedApps(config, { single = false } = {}) {
+  const apps = mobileApps(config);
+  const requested = option("app");
+  if (requested) {
+    mobileAppConfig(config, requested); // reports an unknown name
+    return [requested];
+  }
+  if (!apps.length) return [null];
+  if (single && apps.length > 1) {
+    throw new Error(`This project has several mobile apps. Choose one with --app=<${apps.join("|")}>`);
+  }
+  return single ? [apps[0]] : apps;
+}
+
+async function buildMobileBundle(overrides = {}, app) {
+  const loaded = await loadOptionalConfig();
+  const config = mobileAppConfig(loaded, app === undefined ? selectedApps(loaded, { single: true })[0] : app);
   return buildMobile(config, {
     ...(option("app-id") ? { appId: option("app-id") } : {}),
     ...(option("app-name") ? { appName: option("app-name") } : {}),
@@ -204,7 +224,7 @@ async function buildMobileBundle(overrides = {}) {
   });
 }
 
-function nativeScreenTemplate(name, title) {
+function nativeScreenTemplate(name, title, folder = "resources/mobile") {
   const home = name === "home";
   return `html lang="en" data-theme="dark"
   head
@@ -221,7 +241,7 @@ function nativeScreenTemplate(name, title) {
         section.cool-stack
           span.cool-eyebrow "Mobile workspace"
           h1 "${home ? "Your mobile UI is independent." : title}"
-          p.cool-muted "Edit resources/mobile/${name}.noderframe without changing the website."
+          p.cool-muted "Edit ${folder}/${name}.noderframe without changing the website."
           div.cool-mobile-grid
             article.cool-card
               strong "Fast"
@@ -246,26 +266,40 @@ async function makeMobileView() {
     throw new Error("Mobile view name may contain letters, numbers, slashes, hyphens, and underscores");
   }
   const title = option("title", basename(normalized).replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()));
-  await generate(resolve(option("views", "resources/mobile")), `${normalized}.noderframe`, nativeScreenTemplate(normalized, title));
-  console.log("Compile native widgets with: noderyx build:native");
+  const folder = await mobileViewsFolder();
+  await generate(resolve(folder), `${normalized}.noderframe`, nativeScreenTemplate(normalized, title, folder));
+  console.log(`Compile native widgets with: noderyx build:native${option("app") ? ` --app=${option("app")}` : ""}`);
+}
+
+/** Where mobile screens live: --views, else the --app's folder, else resources/mobile. */
+async function mobileViewsFolder() {
+  if (option("views")) return option("views");
+  const app = option("app");
+  return app ? mobileAppConfig(await loadOptionalConfig(), app).mobile.views : "resources/mobile";
+}
+
+async function scaffoldMobileScreens(folder, appTitle = null) {
+  const directory = resolve(folder);
+  await mkdir(directory, { recursive: true });
+  for (const [name, title] of [["home", appTitle ?? "Mobile Home"], ["settings", "Settings"]]) {
+    const target = join(directory, `${name}.noderframe`);
+    if (!existsSync(target)) await writeFile(target, nativeScreenTemplate(name, title, folder), { flag: "wx" });
+  }
+  return directory;
 }
 
 async function initMobileUi() {
-  const directory = resolve(option("views", "resources/mobile"));
-  await mkdir(directory, { recursive: true });
-  for (const [name, title] of [["home", "Mobile Home"], ["settings", "Settings"]]) {
-    const target = join(directory, `${name}.noderframe`);
-    if (!existsSync(target)) await writeFile(target, nativeScreenTemplate(name, title), { flag: "wx" });
-  }
+  const directory = await scaffoldMobileScreens(await mobileViewsFolder());
   console.log(`Standalone native UI source is ready at ${directory}`);
-  console.log('Set native.views to "resources/mobile", then run: noderyx mobile:builder');
+  if (!option("app")) console.log('Set native.views to "resources/mobile", then run: noderyx mobile:builder');
 }
 
 async function mobileBuilder() {
   await initMobileUi();
-  const config = await loadOptionalConfig();
-  const overrides = { ...nativeOverrides(), views: option("views", "resources/mobile") };
-  const { root } = await initNativeProject(config, overrides);
+  const loaded = await loadOptionalConfig();
+  const [app] = selectedApps(loaded, { single: true });
+  const overrides = { ...nativeOverrides(), views: await mobileViewsFolder() };
+  const { root } = await initNativeProject(mobileAppConfig(loaded, app), overrides);
   if (!hasFlag("no-install")) {
     console.log("\nInstalling standalone React Native dependencies...");
     await run("npm", ["install"], { cwd: root });
@@ -273,8 +307,66 @@ async function mobileBuilder() {
   console.log("No WebView is used. Screens were compiled to React Native platform widgets.");
 }
 
+const APP_SLUG = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Add an app to a multi-app project: customer, admin, partner, and so on each
+ * get their own screens, app ID, and Android/iOS projects.
+ */
+async function makeMobileApp() {
+  const [name] = positional();
+  if (!name || !APP_SLUG.test(name)) {
+    throw new Error("Example: noderyx mobile:app admin   (lowercase letters, numbers, and hyphens)");
+  }
+  const config = await loadOptionalConfig();
+  const shared = mobileOptions({ mobile: { ...(config.mobile ?? {}), apps: undefined } });
+  const title = name.replace(/-+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const appId = option("app-id", `${shared.appId}.${name.replaceAll("-", "_")}`);
+  const appName = option("app-name", `${shared.appName} ${title}`);
+  const folder = option("views", `resources/mobile/${name}`);
+  const directory = await scaffoldMobileScreens(folder, appName);
+  console.log(`Screens for "${name}" are ready at ${relative(process.cwd(), directory) || directory}`);
+
+  if (mobileApps(config).includes(name)) {
+    console.log(`"${name}" is already in mobile.apps.`);
+    return;
+  }
+  const views = folder === `resources/mobile/${name}` ? "" : `, views: ${JSON.stringify(folder)}`;
+  console.log(`
+Add it to mobile.apps in noderyx.config.js:
+
+  mobile: {
+    ...
+    apps: {
+      ${/^[a-z]\w*$/.test(name) ? name : JSON.stringify(name)}: { appId: ${JSON.stringify(appId)}, appName: ${JSON.stringify(appName)}${views} }
+    }
+  }
+
+Then:
+  noderyx build:mobile --app=${name}
+  noderyx mobile:init android --app=${name}
+  noderyx mobile:run android --app=${name}`);
+}
+
+async function listMobileApps() {
+  const config = await loadOptionalConfig();
+  const apps = mobileApps(config);
+  if (!apps.length) {
+    console.log("This project has one mobile app (no mobile.apps). Add more with: noderyx mobile:app <name>");
+    return;
+  }
+  for (const name of apps) {
+    const options = mobileOptions(mobileAppConfig(config, name));
+    const platforms = ["android", "ios"]
+      .filter((platform) => existsSync(resolve(platformDirectory(options, platform))));
+    console.log(`${name.padEnd(14)} ${options.appId.padEnd(32)} ${options.views.padEnd(28)} ${platforms.join(", ") || "no platforms yet"}`);
+  }
+}
+
 async function runMobileFrame() {
-  const [file = "platforms/mobile/www/home.mnoderframe"] = positional();
+  const app = option("app");
+  const out = app ? mobileAppConfig(await loadOptionalConfig(), app).mobile.out : "platforms/mobile";
+  const [file = `${out}/www/home.mnoderframe`] = positional();
   if (!existsSync(resolve(file))) throw new Error(`Mobile frame not found: ${resolve(file)}`);
   const port = Number(option("port", 4173));
   const host = option("host", "127.0.0.1");
@@ -321,8 +413,8 @@ async function installEditorSupport() {
 }
 
 /**
- * Write a fresh APP_KEY into .env. Every signature the framework produces â€”
- * sessions, CSRF tokens, signed cookies â€” depends on it.
+ * Write a fresh APP_KEY into .env. Every signature the framework produces —
+ * sessions, CSRF tokens, signed cookies — depends on it.
  */
 async function sparkKey() {
   const key = generateKey();
@@ -375,24 +467,42 @@ function nativeOverrides() {
 }
 
 async function buildNativeScreens() {
-  await buildNative(await loadOptionalConfig(), nativeOverrides());
+  const config = await loadOptionalConfig();
+  for (const app of selectedApps(config)) await buildNative(mobileAppConfig(config, app), nativeOverrides());
+}
+
+async function buildAllMobile() {
+  const config = await loadOptionalConfig();
+  for (const app of selectedApps(config)) await buildMobileBundle({}, app);
+}
+
+async function nativeTarget() {
+  const config = await loadOptionalConfig();
+  const [app] = selectedApps(config, { single: true });
+  return { config: mobileAppConfig(config, app), app };
 }
 
 async function nativeInit() {
-  const { root } = await initNativeProject(await loadOptionalConfig(), nativeOverrides());
+  const { config } = await nativeTarget();
+  const { root } = await initNativeProject(config, nativeOverrides());
   if (hasFlag("no-install")) return;
 
   console.log("\nInstalling React Native dependencies...");
   await run("npm", ["install"], { cwd: root });
 }
 
+function initHint(command, app) {
+  return `noderyx ${command}${app ? ` --app=${app}` : ""}`;
+}
+
 /** Build the screens, then hand off to Expo to compile and launch the app. */
 async function nativeRun() {
   const [platform] = requestedPlatforms(["android"]);
-  const { out } = await buildNative(await loadOptionalConfig(), nativeOverrides());
+  const { config, app } = await nativeTarget();
+  const { out } = await buildNative(config, nativeOverrides());
 
   if (!existsSync(join(out, "package.json"))) {
-    throw new Error(`No native project yet. Run: noderyx native:init`);
+    throw new Error(`No native project yet. Run: ${initHint("native:init", app)}`);
   }
   if (platform === "ios" && process.platform !== "darwin") {
     throw new Error("Building for iOS requires macOS and Xcode");
@@ -401,16 +511,20 @@ async function nativeRun() {
 }
 
 async function nativeStart() {
-  const { out } = await buildNative(await loadOptionalConfig(), nativeOverrides());
+  const { config, app } = await nativeTarget();
+  const { out } = await buildNative(config, nativeOverrides());
   if (!existsSync(join(out, "package.json"))) {
-    throw new Error(`No native project yet. Run: noderyx native:init`);
+    throw new Error(`No native project yet. Run: ${initHint("native:init", app)}`);
   }
   await run("npx", ["expo", "start", ...(hasFlag("clear") ? ["--clear"] : [])], { cwd: out });
 }
 
+// Each Capacitor command first rebuilds the selected app, which also points
+// capacitor.config.json at that app's web bundle and android/ios folders.
 async function mobileInit() {
   const { options } = await buildMobileBundle();
   const platforms = requestedPlatforms();
+  const flag = options.app ? ` --app=${options.app}` : "";
 
   if (!hasFlag("no-install")) {
     console.log(`Installing Capacitor for ${platforms.join(" and ")}...`);
@@ -418,8 +532,9 @@ async function mobileInit() {
   }
 
   for (const platform of platforms) {
-    if (existsSync(resolve(platform))) {
-      console.log(`Skipping ${platform}: the ${platform}/ project already exists.`);
+    const directory = platformDirectory(options, platform);
+    if (existsSync(resolve(directory))) {
+      console.log(`Skipping ${platform}: ${directory} already exists.`);
       continue;
     }
     if (platform === "ios" && process.platform !== "darwin") {
@@ -431,9 +546,9 @@ async function mobileInit() {
   console.log(`
 Mobile projects are ready.
 
-  noderyx mobile:run android     Build, sync, and launch on a device or emulator
-  noderyx mobile:open ios        Open the Xcode project (macOS)
-  noderyx mobile:sync            Re-copy the web build after changing views
+  noderyx mobile:run android${flag}     Build, sync, and launch on a device or emulator
+  noderyx mobile:open ios${flag}        Open the Xcode project (macOS)
+  noderyx mobile:sync${flag}            Re-copy the web build after changing views
 
 App ID: ${options.appId}   Web directory: ${webDirectory(options)}`);
 }
@@ -446,24 +561,29 @@ async function mobileAdd() {
 }
 
 async function mobileSync() {
-  await buildMobileBundle();
-  const platforms = requestedPlatforms([]).filter((platform) => existsSync(resolve(platform)));
-  await run("npx", ["cap", "sync", ...platforms]);
+  const { options } = await buildMobileBundle();
+  const platforms = requestedPlatforms(["android", "ios"])
+    .filter((platform) => existsSync(resolve(platformDirectory(options, platform))));
+  if (!platforms.length) {
+    throw new Error(`No Android or iOS project yet. Run: ${initHint("mobile:init android", options.app)}`);
+  }
+  for (const platform of platforms) await run("npx", ["cap", "sync", platform]);
 }
 
 async function mobileOpen() {
   const [platform] = requestedPlatforms([]);
   if (!platform) throw new Error("Example: noderyx mobile:open android");
+  await buildMobileBundle();
   await run("npx", ["cap", "open", platform]);
 }
 
 async function mobileRun() {
   const [platform] = requestedPlatforms([]);
   if (!platform) throw new Error("Example: noderyx mobile:run android");
-  if (!existsSync(resolve(platform))) {
-    throw new Error(`No ${platform}/ project yet. Run: noderyx mobile:init ${platform}`);
+  const { options } = await buildMobileBundle();
+  if (!existsSync(resolve(platformDirectory(options, platform)))) {
+    throw new Error(`No ${platform} project yet. Run: ${initHint(`mobile:init ${platform}`, options.app)}`);
   }
-  await buildMobileBundle();
   await run("npx", ["cap", "sync", platform]);
   const target = option("target");
   await run("npx", ["cap", "run", platform, ...(target ? ["--target", target] : [])]);
@@ -874,7 +994,7 @@ async function scaffoldProject() {
     meta charset="utf-8"
     meta name="viewport" content="width=device-width, initial-scale=1"
     meta name="robots" content="noindex"
-    title "${status} â€” {{title}} | Noderyx"
+    title "${status} — {{title}} | Noderyx"
     link rel="stylesheet" href="/public/cool.css"
   body
     main.cool-error-page
@@ -947,7 +1067,7 @@ async function scaffoldProject() {
       },
       engines: { node: ">=20" }
     }, null, 2) + "\n",
-    "server.js": `import { ai, loadEnvironment, loadPackages, noderyx } from "noderyx-framework";
+    "server.js": `import { ai, bearerToken, loadEnvironment, loadPackages, noderyx, registerMobileUi } from "noderyx-framework";
 import { fileURLToPath } from "node:url";
 import { HomeController } from "./app/Controllers/HomeController.js";
 
@@ -974,6 +1094,13 @@ app.provide("ai", ai(config.ai));
 
 app.get("/", HomeController.handle("index"));
 app.get("/health", HomeController.handle("health"));
+
+// Mobile Studio (/mobile-studio) edits the theme, text, and flags of installed
+// apps. Set MOBILE_STUDIO_TOKEN (16+ characters) to allow changes; without it
+// the studio is read-only. Swap in your own check, e.g. an admin session.
+registerMobileUi(app, config, {
+  authorize: process.env.MOBILE_STUDIO_TOKEN ? bearerToken(process.env.MOBILE_STUDIO_TOKEN) : null
+});
 await loadPackages(app, config.packages, { config });
 
 // Phusion Passenger (cPanel) may hand the application a unix socket path in
@@ -1154,6 +1281,17 @@ export default {
     out: "platforms/mobile",
     // The packaged app has no server of its own, so point it at your API.
     apiUrl: process.env.MOBILE_API_URL ?? null,
+    // Installed apps fetch theme, text, flags, and screens published from the
+    // web app (Mobile Studio at /mobile-studio), so no store release is needed.
+    remoteUi: true,
+    // Several apps from one project. Each gets its own screens
+    // (resources/mobile/<name>), app ID, and Android/iOS projects under
+    // platforms/mobile/<name>. Add one with: noderyx mobile:app <name>
+    // apps: {
+    //   customer: { appId: "com.example.customer", appName: "Example" },
+    //   admin: { appId: "com.example.admin", appName: "Example Admin" },
+    //   partner: { appId: "com.example.partner", appName: "Example Partner" }
+    // },
     data: {
       siteName: process.env.SITE_NAME ?? "${requested}",
       siteUrl: process.env.SITE_URL ?? "http://localhost:3000",
@@ -1262,6 +1400,8 @@ SESSION_SECURE=false
 MOBILE_APP_ID=com.example.${requested.toLowerCase().replaceAll("-", "")}
 MOBILE_APP_NAME="${requested}"
 MOBILE_API_URL=
+# Allows changes in Mobile Studio (/mobile-studio). 16+ random characters.
+MOBILE_STUDIO_TOKEN=
 `,
     ".gitignore": `# Dependencies and package-manager caches
 node_modules/
@@ -1301,6 +1441,8 @@ qa-results/
 .noderyx/
 public/generated/
 platforms/mobile/www/
+platforms/mobile/*/www/
+storage/mobile-ui/
 platforms/native/
 
 # Written on the server by deploy.sh; can hold a GitHub token
@@ -1691,6 +1833,12 @@ Noderyx Framework CLI
   noderyx mobile:builder [--views=resources/mobile] [--no-install]  # standalone; no WebView
   noderyx mobile:make <name> [--title=Title]                       # native screen
 
+  Several apps from one project (customer, admin, partner...)
+  noderyx mobile:app <name> [--app-id=com.example.admin] [--app-name=Name]
+  noderyx mobile:apps
+  Add --app=<name> to any mobile or native command. Builds without it cover every app.
+  Edit theme, text, and flags of installed apps from the web app at /mobile-studio.
+
   Packaged web build (Cool.css in a native shell)
   noderyx build:mobile [--app-id=com.example.app] [--app-name=Name] [--entry=home]
   noderyx mobile:ui:init [--views=resources/mobile]                # source only
@@ -1737,7 +1885,9 @@ try {
   else if (command === "cpanel:build" || command === "build:cpanel" || command === "deploy:cpanel") await cpanelBuild();
   else if (command === "cpanel:file" || command === "cpanel:htaccess") await cpanelFile();
   else if (command === "cpanel:deploy-script" || command === "deploy:init" || command === "cpanel:deploy") await cpanelDeployScript();
-  else if (command === "build:mobile" || command === "mobile:build") await buildMobileBundle();
+  else if (command === "build:mobile" || command === "mobile:build") await buildAllMobile();
+  else if (command === "mobile:app" || command === "make:mobile-app") await makeMobileApp();
+  else if (command === "mobile:apps") await listMobileApps();
   else if (command === "mnoderframe:run" || command === "mobile:preview") await runMobileFrame();
   else if (command === "editor:install") await installEditorSupport();
   else if (command === "build:native") await buildNativeScreens();

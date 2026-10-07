@@ -7,10 +7,13 @@ import { injectPwa, manifest, pwaOptions, serviceWorker } from "./pwa.js";
 import { compileMNodeFrame } from "./mnoderframe.js";
 
 const VIEW_EXTENSIONS = [".noderframe", ".untitled"];
+const APP_NAME = /^[a-z][a-z0-9-]*$/;
 
 export const MOBILE_DEFAULTS = {
   appId: "com.noderyx.app",
   appName: "Noderyx",
+  // Name of the app inside `mobile.apps`. Null for a single-app project.
+  app: null,
   entry: "home",
   views: "views",
   public: "public",
@@ -20,17 +23,78 @@ export const MOBILE_DEFAULTS = {
   // Absolute URL of the Noderyx server the packaged app calls for JSON APIs.
   // A bundled app has no origin of its own, so relative /api paths are rewritten.
   apiUrl: null,
+  // Fetch screens, theme, and flags from apiUrl at launch, so the web app can
+  // change the mobile UI without a store release. Needs apiUrl.
+  remoteUi: true,
   exclude: ["generated", "untitled-live.js"],
   liveReloadUrl: null,
   androidScheme: "https",
   splashDuration: 1200
 };
 
+function titleCase(name) {
+  return name.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+/** Names of the apps declared in `mobile.apps`, in declaration order. */
+export function mobileApps(config = {}) {
+  return Object.keys(config.mobile?.apps ?? {});
+}
+
+/**
+ * Resolve one app of a multi-app project into an ordinary config, so every
+ * builder works unchanged. Each app gets its own views, output folder, and
+ * Android/iOS projects; anything it does not set is shared from `mobile`.
+ *
+ *   mobile: { apiUrl, apps: { customer: { appId }, admin: { appId } } }
+ */
+export function mobileAppConfig(config = {}, name = null) {
+  if (!name) return config;
+  if (!APP_NAME.test(name)) {
+    throw new Error(`Invalid mobile app name: ${name} (use lowercase letters, numbers, and hyphens)`);
+  }
+  const { apps = {}, ...shared } = config.mobile ?? {};
+  const app = apps[name];
+  if (!app) {
+    const known = Object.keys(apps);
+    throw new Error(`Unknown mobile app: ${name} (configured: ${known.length ? known.join(", ") : "none"})`);
+  }
+
+  const { native: nativeOwn = {}, ...own } = app;
+  const baseId = shared.appId ?? MOBILE_DEFAULTS.appId;
+  const mobile = {
+    ...shared,
+    appId: `${baseId}.${name.replaceAll("-", "_")}`,
+    appName: `${shared.appName ?? MOBILE_DEFAULTS.appName} ${titleCase(name)}`,
+    views: `resources/mobile/${name}`,
+    out: `platforms/mobile/${name}`,
+    entry: "home",
+    ...own,
+    app: name,
+    data: { ...(shared.data ?? {}), ...(own.data ?? {}) },
+    pages: { ...(shared.pages ?? {}), ...(own.pages ?? {}) }
+  };
+  const native = {
+    ...(config.native ?? {}),
+    appId: mobile.appId,
+    appName: mobile.appName,
+    views: mobile.views,
+    entry: mobile.entry,
+    apiUrl: mobile.apiUrl ?? config.native?.apiUrl ?? null,
+    ...(mobile.remoteUi === undefined ? {} : { remoteUi: mobile.remoteUi }),
+    out: `platforms/native/${name}`,
+    ...nativeOwn,
+    app: name
+  };
+  return { ...config, mobile, native };
+}
+
 export function mobileOptions(config = {}, overrides = {}) {
   const provided = Object.fromEntries(
     Object.entries(overrides).filter(([, value]) => value !== undefined)
   );
-  const mobile = { ...MOBILE_DEFAULTS, ...(config.mobile ?? {}), ...provided };
+  const { apps: _apps, ...configured } = config.mobile ?? {};
+  const mobile = { ...MOBILE_DEFAULTS, ...configured, ...provided };
   if (!/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/i.test(mobile.appId)) {
     throw new Error(`Invalid mobile.appId: ${mobile.appId} (use reverse domain form, e.g. com.example.app)`);
   }
@@ -40,15 +104,24 @@ export function mobileOptions(config = {}, overrides = {}) {
     description: mobile.description ?? config.description ?? "Built with Noderyx Framework.",
     ...(config.pwa ?? {}),
     ...(mobile.pwa ?? {}),
-    startUrl: `/${mobile.entry}.mnoderframe`,
+    startUrl: "/",
     scope: "/",
-    offlinePath: "/offline.mnoderframe"
+    offlinePath: "/offline.html"
   });
   return mobile;
 }
 
 export function webDirectory(options) {
   return join(options.out, "www");
+}
+
+/**
+ * Where the Capacitor platform project lives. A single-app project keeps the
+ * Capacitor default (android/ and ios/ at the root); each app of a multi-app
+ * project gets its own, so the apps install side by side on one device.
+ */
+export function platformDirectory(options, platform) {
+  return options.app ? join(options.out, platform) : platform;
 }
 
 async function collectFiles(directory, filter) {
@@ -124,20 +197,52 @@ async function copyDirectory(from, to, exclude = []) {
   return count;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+// The bundle's CSP blocks inline handlers, so "Try again" is a plain link.
 function offlinePage(options) {
+  const name = escapeHtml(options.appName);
   return `<!doctype html>
 <html lang="en" data-theme="dark"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${bundleCsp(options.apiUrl)}">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Offline â€” ${options.appName}</title>
+<title>Offline — ${name}</title>
 <link rel="stylesheet" href="/public/cool.css"></head>
 <body><main class="cool-error-page"><section class="cool-error-card">
-<span class="cool-error-code">Â·Â·Â·</span>
+<span class="cool-error-code">···</span>
 <span class="cool-eyebrow">No connection</span>
 <h1>You are offline</h1>
-<p class="cool-error-message">${options.appName} will reconnect as soon as your device is back online.</p>
+<p class="cool-error-message">${name} will reconnect as soon as your device is back online.</p>
 <div class="cool-row cool-error-actions">
-<button class="cool-btn" type="button" onclick="location.reload()">Try again</button>
+<a class="cool-btn" href="/">Try again</a>
 </div></section></main></body></html>
+`;
+}
+
+/**
+ * The document the WebView opens. Capacitor requires an index.html and serves
+ * it for every unknown path, so this shell boots the router, which draws the
+ * requested route from its .mnoderframe payload (or a newer remote copy).
+ */
+export function shellPage(options, stylesheets = []) {
+  const links = stylesheets.map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`).join("");
+  return `<!doctype html>
+<html lang="en" data-theme="dark" data-noderyx-shell="true"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${bundleCsp(options.apiUrl)}">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="${escapeHtml(options.pwa.themeColor)}">
+<title>${escapeHtml(options.appName)}</title>
+<link rel="manifest" href="/manifest.webmanifest">${links}
+<script src="/public/noderyx-boot.js"></script>
+<script src="/public/noderyx-native.js" defer></script>
+<script src="/public/noderyx-router.js" defer></script>
+</head><body style="background:${escapeHtml(options.pwa.backgroundColor)}"></body></html>
 `;
 }
 
@@ -167,6 +272,10 @@ export function capacitorConfig(options) {
     }
   };
 
+  if (options.app) {
+    config.android.path = platformDirectory(options, "android").replaceAll("\\", "/");
+    config.ios.path = platformDirectory(options, "ios").replaceAll("\\", "/");
+  }
   if (options.liveReloadUrl) {
     config.server.url = options.liveReloadUrl;
     config.server.cleartext = options.liveReloadUrl.startsWith("http://");
@@ -192,20 +301,14 @@ async function writeIcons(directory) {
 }
 
 /**
- * Compile the project into a self-contained web bundle that Capacitor ships
- * inside the Android and iOS applications.
+ * Compile an app's views into `.mnoderframe` payloads. The build writes them
+ * into the bundle; the server sends the same payloads as remote UI updates.
  */
-export async function buildMobile(config = {}, overrides = {}, log = console.log) {
-  const options = mobileOptions(config, overrides);
+export async function compileMobilePages(options, { data = {} } = {}) {
   const viewsRoot = resolve(options.views);
-  const publicRoot = resolve(options.public);
-  const www = resolve(webDirectory(options));
-
   if (!existsSync(viewsRoot)) {
     throw new Error(`Views directory not found: ${viewsRoot}`);
   }
-
-  await mkdir(www, { recursive: true });
 
   const viewFiles = await collectFiles(viewsRoot, (file) => VIEW_EXTENSIONS.includes(extname(file)));
   if (!viewFiles.length) throw new Error(`No .noderframe views found in ${viewsRoot}`);
@@ -222,21 +325,14 @@ export async function buildMobile(config = {}, overrides = {}, log = console.log
     throw new Error(`Entry view not found: ${options.entry} (available: ${[...routes].join(", ")})`);
   }
 
-  // Remove artifacts produced by older builds for the same known routes.
-  // Targets are derived only from validated view filenames beneath viewsRoot.
-  for (const route of routes) {
-    await rm(join(www, `${route}.html`), { force: true });
-    await rm(join(www, `${route}.noderframe`), { force: true });
-    await rm(join(www, `${route}.mnoderframe`), { force: true });
-  }
-
-  const pages = [];
+  const csp = `<meta http-equiv="Content-Security-Policy" content="${bundleCsp(options.apiUrl)}">`;
+  const pages = new Map();
+  let stylesheets = [];
   for (const file of selected) {
     const route = toRoute(file, viewsRoot);
-    const data = { ...options.data, ...(options.pages[route] ?? {}) };
-    const compiled = compile(await readFile(file, "utf8"), data);
+    const pageData = { ...options.data, ...data, ...(options.pages[route] ?? {}) };
+    const compiled = compile(await readFile(file, "utf8"), pageData);
     const bundled = rewriteForBundle(compiled, routes, options.entry, options.apiUrl);
-    const csp = `<meta http-equiv="Content-Security-Policy" content="${bundleCsp(options.apiUrl)}">`;
 
     // The bundle's policy forbids inline scripts, so the boot code that would
     // normally be inlined ships as a file instead.
@@ -248,57 +344,98 @@ export async function buildMobile(config = {}, overrides = {}, log = console.log
         `<script src="/public/noderyx-boot.js" defer></script><script src="/public/noderyx-native.js"`
       );
 
-    // Every mobile page uses the dedicated compiled mobile format.
+    if (route === options.entry) {
+      stylesheets = [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*>/gi)]
+        .map(([tag]) => tag.match(/href="([^"]+)"/)?.[1])
+        .filter((href) => href?.startsWith("/"));
+    }
+    pages.set(route, compileMNodeFrame(html, route));
+  }
+  return { routes, pages, stylesheets };
+}
+
+function bootScript(options, routes) {
+  return `// Generated by Noderyx build:mobile.
+window.NODERYX_API_BASE = ${JSON.stringify(options.apiUrl ?? "")};
+window.NODERYX_ROUTES = ${JSON.stringify([...routes])};
+window.NODERYX_ENTRY = ${JSON.stringify(options.entry)};
+window.NODERYX_APP = ${JSON.stringify(options.app ?? "default")};
+window.NODERYX_REMOTE_UI = ${JSON.stringify(Boolean(options.remoteUi && options.apiUrl))};
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+}
+`;
+}
+
+/**
+ * Compile the project into a self-contained web bundle that Capacitor ships
+ * inside the Android and iOS applications.
+ */
+export async function buildMobile(config = {}, overrides = {}, log = console.log) {
+  const options = mobileOptions(config, overrides);
+  const publicRoot = resolve(options.public);
+  const www = resolve(webDirectory(options));
+
+  const { routes, pages, stylesheets } = await compileMobilePages(options);
+
+  await mkdir(www, { recursive: true });
+
+  // Remove artifacts produced by older builds for the same known routes.
+  // Targets are derived only from validated view filenames beneath the views folder.
+  for (const route of routes) {
+    await rm(join(www, `${route}.html`), { force: true });
+    await rm(join(www, `${route}.noderframe`), { force: true });
+    await rm(join(www, `${route}.mnoderframe`), { force: true });
+  }
+
+  // Every mobile page uses the dedicated compiled mobile format.
+  for (const [route, source] of pages) {
     const target = join(www, `${route}.mnoderframe`);
     await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, compileMNodeFrame(html, route));
-    pages.push(route);
+    await writeFile(target, source);
   }
 
   const assets = await copyDirectory(publicRoot, join(www, "public"), options.exclude);
 
-  // Projects created before the mobile target may not ship the bridge yet.
+  // Projects created before the mobile target may not ship the runtime yet.
+  // The router is always refreshed: the shell and remote UI depend on it.
+  await mkdir(join(www, "public"), { recursive: true });
   if (!existsSync(join(publicRoot, "noderyx-native.js"))) {
-    await mkdir(join(www, "public"), { recursive: true });
     await writeFile(
       join(www, "public/noderyx-native.js"),
       await readFile(new URL("../public/noderyx-native.js", import.meta.url))
     );
   }
-  if (!existsSync(join(publicRoot, "noderyx-router.js"))) {
-    await mkdir(join(www, "public"), { recursive: true });
-    await writeFile(
-      join(www, "public/noderyx-router.js"),
-      await readFile(new URL("../public/noderyx-router.js", import.meta.url))
-    );
-  }
+  await writeFile(
+    join(www, "public/noderyx-router.js"),
+    await readFile(new URL("../public/noderyx-router.js", import.meta.url))
+  );
 
-  await writeFile(join(www, "public/noderyx-boot.js"), `// Generated by Noderyx build:mobile.
-window.NODERYX_API_BASE = ${JSON.stringify(options.apiUrl ?? "")};
-window.NODERYX_ROUTES = ${JSON.stringify([...routes])};
-window.NODERYX_ENTRY = ${JSON.stringify(options.entry)};
-if ("serviceWorker" in navigator) {
-  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
-}
-`);
+  await writeFile(join(www, "public/noderyx-boot.js"), bootScript(options, routes));
+
+  const precache = [
+    "/index.html",
+    "/public/noderyx-boot.js",
+    ...stylesheets,
+    ...[...routes].map((route) => `/${route}.mnoderframe`)
+  ];
+  const pwa = { ...options.pwa, precache: [...new Set([...options.pwa.precache, ...precache])] };
 
   await writeIcons(join(www, "public/icons"));
-  await writeFile(join(www, "manifest.webmanifest"), `${JSON.stringify(manifest(options.pwa), null, 2)}\n`);
-  await writeFile(join(www, "sw.js"), serviceWorker(options.pwa));
-  await writeFile(
-    join(www, "offline.mnoderframe"),
-    compileMNodeFrame(offlinePage(options), "offline")
-  );
-  // Remove legacy WebView documents so mobile/www is .mnoderframe-only.
-  await rm(join(www, "index.html"), { force: true });
-  await rm(join(www, "offline.html"), { force: true });
+  await writeFile(join(www, "manifest.webmanifest"), `${JSON.stringify(manifest(pwa), null, 2)}\n`);
+  await writeFile(join(www, "sw.js"), serviceWorker(pwa));
+  await writeFile(join(www, "index.html"), shellPage(options, stylesheets));
+  await writeFile(join(www, "offline.html"), offlinePage(options));
+  // Older builds wrote the offline page as a payload the WebView cannot open.
+  await rm(join(www, "offline.mnoderframe"), { force: true });
   await writeFile(
     resolve("capacitor.config.json"),
     `${JSON.stringify(capacitorConfig(options), null, 2)}\n`
   );
 
-  log(`Built ${pages.length} page${pages.length === 1 ? "" : "s"} and ${assets} asset${assets === 1 ? "" : "s"} into ${relative(process.cwd(), www) || www}`);
-  log(`Entry: ${options.entry}.mnoderframe   App ID: ${options.appId}`);
+  const label = options.app ? ` [${options.app}]` : "";
+  log(`Built${label} ${pages.size} page${pages.size === 1 ? "" : "s"} and ${assets} asset${assets === 1 ? "" : "s"} into ${relative(process.cwd(), www) || www}`);
+  log(`Entry: ${options.entry}   App ID: ${options.appId}${options.remoteUi && options.apiUrl ? `   Remote UI: ${options.apiUrl}` : ""}`);
 
   return { www, pages: [...routes], assets, options };
 }

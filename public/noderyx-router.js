@@ -17,6 +17,49 @@
   const bundled = routes.size > 0;
   let navigating = false;
 
+  // Remote UI: screens, theme, and flags published from the web app. The last
+  // copy is kept on the device, so the app opens with it even when offline.
+  const appName = window.NODERYX_APP || "default";
+  const apiBase = window.NODERYX_API_BASE || "";
+  const remoteEnabled = bundled && Boolean(window.NODERYX_REMOTE_UI) && Boolean(apiBase);
+  const storeKey = `noderyx:ui:${appName}`;
+  let remote = null;
+  let lastCheck = 0;
+  let shown = null; // source of the screen on display
+
+  const readRemote = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storeKey) || "null");
+      return saved && typeof saved.version === "string" && saved.pages ? saved : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const applyRemoteTheme = () => {
+    let sheet = document.getElementById("noderyx-remote-theme");
+    if (!remote?.css) {
+      sheet?.remove();
+    } else {
+      if (!sheet) {
+        sheet = document.createElement("style");
+        sheet.id = "noderyx-remote-theme";
+      }
+      sheet.textContent = remote.css;
+      document.head.append(sheet); // last, so it wins over every stylesheet
+    }
+    if (remote?.theme?.mode) document.documentElement.dataset.theme = remote.theme.mode;
+  };
+
+  const adoptRemote = (next) => {
+    remote = next;
+    for (const route of remote?.routes || []) routes.add(route);
+    window.Noderyx = Object.assign(window.Noderyx || {}, { flags: { ...(remote?.flags || {}) } });
+    applyRemoteTheme();
+  };
+
+  if (remoteEnabled) adoptRemote(readRemote());
+
   const routeName = (url) => {
     const path = url.pathname.replace(/^\/+|\/+$/g, "").replace(/\.html$/, "");
     return path || entry;
@@ -33,6 +76,21 @@
     const route = routeName(url);
     const file = `/${route}.mnoderframe`;
     return `${file}${url.search}`;
+  };
+
+  /** The page source: a published remote copy if there is one, else the bundled file. */
+  async function loadSource(url) {
+    const published = bundled ? remote?.pages?.[routeName(url)] : null;
+    if (published) return published;
+    const response = await fetch(sourceFor(url), { headers: { "X-Noderyx-Navigation": "1" } });
+    if (!response.ok) throw new Error(`Navigation failed (${response.status})`);
+    return response.text();
+  }
+
+  // A failed in-app navigation must land on a page, never on a raw payload:
+  // bundled apps reload the clean route, which the shell draws.
+  const hardNavigate = (url) => {
+    location.href = bundled ? url.pathname + url.search + url.hash : url.href;
   };
 
   const decodeText = (value) => {
@@ -55,6 +113,36 @@
     const fragment = document.createDocumentFragment();
     for (const node of payload.document) fragment.append(build(node));
     return fragment;
+  };
+
+  /** Draw a whole compiled page: attributes, title, stylesheets, scripts, and body. */
+  const renderDocument = (fragment) => {
+    const body = fragment.querySelector("body");
+    if (!body) throw new Error("The page has no body");
+    const html = fragment.querySelector("html");
+    const head = fragment.querySelector("head");
+    for (const { name, value } of html?.attributes || []) document.documentElement.setAttribute(name, value);
+    delete document.documentElement.dataset.noderyxShell;
+    document.title = head?.querySelector("title")?.textContent || document.title;
+
+    for (const link of head?.querySelectorAll('link[rel="stylesheet"]') || []) {
+      const href = link.getAttribute("href");
+      if (![...document.querySelectorAll('link[rel="stylesheet"]')].some((item) => item.getAttribute("href") === href)) {
+        document.head.append(link.cloneNode());
+      }
+    }
+    const loaded = new Set([...document.scripts].map((script) => script.getAttribute("src")).filter(Boolean));
+    const pending = [...(head?.querySelectorAll("script[src]") || [])]
+      .map((script) => script.getAttribute("src"))
+      .filter((src) => !loaded.has(src));
+
+    document.body.replaceWith(body);
+    for (const src of pending) {
+      const script = document.createElement("script");
+      script.src = src;
+      document.head.append(script);
+    }
+    applyRemoteTheme();
   };
 
   const announce = (message) => {
@@ -82,24 +170,28 @@
     navigating = true;
     document.documentElement.dataset.noderyxNavigating = "true";
     try {
-      const response = await fetch(sourceFor(url), { headers: { "X-Noderyx-Navigation": "1" } });
-      if (!response.ok) throw new Error(`Navigation failed (${response.status})`);
-      const source = await response.text();
+      const source = await loadSource(url);
       const compiled = mobileDocument(source);
+      shown = source;
       const next = compiled
         ? { querySelector: (selector) => compiled.querySelector(selector), title: compiled.querySelector("title")?.textContent || "", body: compiled.querySelector("body") || { className: "" } }
         : new DOMParser().parseFromString(source, "text/html");
       const currentMain = document.querySelector("main");
       const nextMain = next.querySelector("main");
-      if (!currentMain || !nextMain) {
-        location.href = sourceFor(url);
+      let swap;
+      if (currentMain && nextMain) {
+        swap = () => {
+          currentMain.replaceWith(document.importNode(nextMain, true));
+          document.title = next.title || document.title;
+          document.body.className = next.body.className;
+        };
+      } else if (compiled) {
+        // Screens without a shared <main> are drawn whole.
+        swap = () => renderDocument(compiled);
+      } else {
+        hardNavigate(url);
         return true;
       }
-      const swap = () => {
-        currentMain.replaceWith(document.importNode(nextMain, true));
-        document.title = next.title || document.title;
-        document.body.className = next.body.className;
-      };
       if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
         await document.startViewTransition(swap).finished;
       } else swap();
@@ -112,11 +204,71 @@
       dispatchEvent(new CustomEvent("noderyx:navigate", { detail: { url: url.href } }));
       return true;
     } catch (error) {
-      location.href = sourceFor(url);
+      hardNavigate(url);
       return true;
     } finally {
       navigating = false;
       delete document.documentElement.dataset.noderyxNavigating;
+    }
+  }
+
+  /** Draw the current route into the index.html shell the WebView opened. */
+  async function boot() {
+    const url = new URL(location.href);
+    const route = routes.has(routeName(url)) ? url : new URL("/", location.href);
+    try {
+      const source = await loadSource(route);
+      const compiled = mobileDocument(source);
+      if (!compiled) throw new Error("Unsupported page format");
+      shown = source;
+      renderDocument(compiled);
+      if (route !== url) window.history.replaceState({}, "", "/");
+      dispatchEvent(new CustomEvent("noderyx:navigate", { detail: { url: route.href } }));
+    } catch (error) {
+      // A broken published copy must never brick the app: drop it and retry once.
+      if (remote && !boot.retried) {
+        boot.retried = true;
+        try { localStorage.removeItem(storeKey); } catch {}
+        adoptRemote(null);
+        return boot();
+      }
+      const message = document.createElement("p");
+      message.textContent = `This screen could not be opened. ${error.message}`;
+      document.body.replaceChildren(message);
+    }
+  }
+
+  /** Ask the server for a newer published UI. Cheap when nothing changed. */
+  async function refresh({ force = false } = {}) {
+    if (!remoteEnabled) return false;
+    if (!force && Date.now() - lastCheck < 30000) return false;
+    lastCheck = Date.now();
+    try {
+      const since = remote?.version ? `?since=${encodeURIComponent(remote.version)}` : "";
+      const response = await fetch(`${apiBase}/api/mobile/${encodeURIComponent(appName)}/ui${since}`, {
+        headers: { accept: "application/json" },
+        credentials: "omit",
+        cache: "no-store"
+      });
+      if (response.status === 204 || !response.ok) return false;
+      const next = await response.json();
+      if (!next?.version || !next.pages || next.version === remote?.version) return false;
+
+      const route = routeName(new URL(location.href));
+      const changed = Boolean(next.pages[route]) && next.pages[route] !== shown;
+      try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch {}
+      adoptRemote(next);
+      if (changed) {
+        const compiled = mobileDocument(next.pages[route]);
+        if (compiled) {
+          renderDocument(compiled);
+          shown = next.pages[route];
+        }
+      }
+      dispatchEvent(new CustomEvent("noderyx:ui-updated", { detail: { version: next.version } }));
+      return true;
+    } catch {
+      return false; // offline or server unreachable: keep the current UI
     }
   }
 
@@ -130,5 +282,20 @@
   });
 
   addEventListener("popstate", () => navigate(location.href, { history: false }));
-  window.Noderyx = Object.assign(window.Noderyx || {}, { navigate, routes: [...routes] });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refresh();
+  });
+
+  window.Noderyx = Object.assign(window.Noderyx || {}, {
+    navigate,
+    routes: [...routes],
+    ui: {
+      app: appName,
+      get version() { return remote?.version ?? null; },
+      refresh: () => refresh({ force: true })
+    }
+  });
+
+  const start = document.documentElement.dataset.noderyxShell ? boot() : Promise.resolve();
+  start.then(() => refresh({ force: true }));
 })();

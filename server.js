@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { ai, loadEnvironment, loadPackages, noderyx } from "./framework/index.js";
+import { ai, bearerToken, loadEnvironment, loadPackages, noderyx, registerMobileUi } from "./framework/index.js";
 import { registerRoutes } from "./routes/index.js";
 
 loadEnvironment();
@@ -24,6 +24,13 @@ const app = noderyx({
 app.provide("ai", ai(config.ai));
 
 registerRoutes(app);
+
+// Mobile Studio (/mobile-studio) edits the theme, text, and flags of installed
+// apps. Set MOBILE_STUDIO_TOKEN (16+ characters) to allow changes; without it
+// the studio is read-only. Swap in your own check, e.g. an admin session.
+registerMobileUi(app, config, {
+  authorize: process.env.MOBILE_STUDIO_TOKEN ? bearerToken(process.env.MOBILE_STUDIO_TOKEN) : null
+});
 await loadPackages(app, config.packages, { config });
 
 // Phusion Passenger (cPanel) may hand the application a unix socket path in

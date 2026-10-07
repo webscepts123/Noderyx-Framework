@@ -36,6 +36,8 @@ qa-results/
 .noderyx/
 public/generated/
 platforms/mobile/www/
+platforms/mobile/*/www/
+storage/mobile-ui/
 platforms/native/
 platforms/cpanel/
 

@@ -15,7 +15,7 @@ noderyx native:run android
 ```
 
 `noderyx native:init` compiles your `.noderframe` views into a real Android and
-iOS application. Screens draw platform widgets â€” `View`, `Text`, `Pressable`,
+iOS application. Screens draw platform widgets — `View`, `Text`, `Pressable`,
 `Image`, `FlatList`. **There is no WebView, no HTML, and no CSS on the device.**
 
 ```bash
@@ -30,10 +30,10 @@ Everything a screen needs is resolved while you build, not while the user waits:
 
 | Resolved at build time | Consequence on the device |
 | --- | --- |
-| Element â†’ native widget | No lookup table, no DOM |
-| `{{placeholder}}` â†’ JavaScript expression | No template parsing |
-| Loop and component variables â†’ direct property access | `post?.title`, not a dictionary lookup |
-| Class names â†’ flattened style objects | A re-render allocates nothing |
+| Element → native widget | No lookup table, no DOM |
+| `{{placeholder}}` → JavaScript expression | No template parsing |
+| Loop and component variables → direct property access | `post?.title`, not a dictionary lookup |
+| Class names → flattened style objects | A re-render allocates nothing |
 
 A view like this:
 
@@ -51,7 +51,7 @@ main.cool-container
     PostCard post="{{post}}"
 ```
 
-compiles to this â€” which is what actually ships:
+compiles to this — which is what actually ships:
 
 ```jsx
 const PostCard = React.memo(function PostCard({ data = {}, post, navigate, ... }) {
@@ -84,7 +84,7 @@ function Feed({ data = {}, actions = {}, navigate = link }) {
 export default React.memo(Feed);
 ```
 
-Note `post?.title` â€” inside the component, `post` is a real JavaScript variable.
+Note `post?.title` — inside the component, `post` is a real JavaScript variable.
 The compiler tracked the scope, so nothing is looked up by name at runtime.
 
 ## The language
@@ -117,10 +117,10 @@ Empty arrays are falsy, so `if !posts` is the empty-state check you want.
 Two forms, because the choice matters on a phone:
 
 ```text
-for tag in tags           // renders inline â€” for short, known lists
+for tag in tags           // renders inline — for short, known lists
   span.cool-badge "{{tag}}"
 
-list post in posts        // virtualized FlatList â€” for data of any size
+list post in posts        // virtualized FlatList — for data of any size
   PostCard post="{{post}}"
 ```
 
@@ -151,7 +151,7 @@ list post in posts
 ```
 
 A capitalised name is a component. A prop that is exactly one placeholder passes
-the **value** â€” objects and arrays survive â€” while anything else is interpolated
+the **value** — objects and arrays survive — while anything else is interpolated
 as text. Components compile to `React.memo`'d components, so a row that has not
 changed does not re-render. Screen data stays visible inside them, and recursion
 is reported rather than left to hang.
@@ -161,11 +161,11 @@ is reported rather than left to hang.
 ```text
 native/
   App.jsx        Entry point: screen map, startup data, status bar
-  Navigator.jsx  Stack navigation with animated transitions â€” no dependencies
+  Navigator.jsx  Stack navigation with animated transitions — no dependencies
   native.js      Camera, location, storage, share, notifications, haptics
   runtime.js     The eight helpers compiled screens call
   styles.js      Style combinations, flattened once at load
-  theme.js       Design tokens â€” the one file to edit
+  theme.js       Design tokens — the one file to edit
   home.jsx       One memoized component per view
   errors/404.jsx
   assets/        Generated icon, adaptive icon, and splash art
@@ -224,7 +224,7 @@ The Android hardware back button pops the stack.
 Screens are statically imported, so pushing one costs a render, not a load.
 
 Replace it with React Navigation or Expo Router when you need tabs, modals, or
-deep links â€” the screens are ordinary components and need no changes.
+deep links — the screens are ordinary components and need no changes.
 
 ## Styling
 
@@ -249,7 +249,7 @@ export const s = {
 That is why a re-render allocates nothing: `style={s.mainCoolContainer}` passes
 an object that already exists, instead of building `[a, b]` every frame.
 
-Class names are camel-cased â€” `cool-error-card` becomes `coolErrorCard`. Editing
+Class names are camel-cased — `cool-error-card` becomes `coolErrorCard`. Editing
 `theme.js` updates every screen, and regenerating never overwrites it.
 
 ## Native features
@@ -299,8 +299,25 @@ export default {
 screen data. The first frame draws immediately from whatever you passed in, so
 the app is never blank while that request is in flight.
 
-Your Noderyx server must allow the app's origin â€” see
+Your Noderyx server must allow the app's origin — see
 [security](SECURITY.md#cors-and-the-mobile-app).
+
+### Theme, text, and flags from the web app
+
+When `apiUrl` is set, the generated `App.jsx` also downloads what was
+published in Mobile Studio (`/mobile-studio`) at launch and on every return to
+the foreground: theme colours are applied through `applyTheme()` in
+`styles.js`, text values are merged into screen `data`, and flags are
+available as `data.flags` and `native.flags`. The last copy is cached with
+`@react-native-async-storage/async-storage` when it is installed. Screens are
+compiled into the app, so new or changed screens still need a release. See
+[Change the UI from the web app](MOBILE.md#change-the-ui-from-the-web-app).
+
+### Several apps
+
+Customer, admin, and partner apps share one project through `mobile.apps`;
+`build:native --app=admin` writes `platforms/native/admin`. See
+[Several apps from one project](MOBILE.md#several-apps-from-one-project).
 
 ## Shipping
 
@@ -314,7 +331,7 @@ Version numbers live in `app.json`. For Google Play, build an app bundle from
 Android Studio; for the App Store, archive from Xcode on macOS.
 
 Icons and splash art are generated into `native/assets/`. Replace them with your
-own at the same paths â€” the build never overwrites a file that already exists.
+own at the same paths — the build never overwrites a file that already exists.
 
 ## Current limits
 

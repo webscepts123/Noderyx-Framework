@@ -11,7 +11,7 @@ import { buildNative, initNativeProject, stylesModule, themeModule } from "../fr
 
 const SOURCE = `html lang="en"
   head
-    title "{{siteName}} â€” Noderyx"
+    title "{{siteName}} — Noderyx"
     script src="/public/home.js"
   body
     main.cool-container
@@ -159,7 +159,7 @@ test("native screens are memoized and take data as props", () => {
   const { source } = renderNative(parse(SOURCE), { route: "home" });
   assert.match(source, /export default React\.memo\(Home\)/);
   assert.match(source, /\{`Hello \$\{value\(data, "user\.name"\)\}`\}/);
-  assert.match(source, /export const title = \(data = \{\}\) => `\$\{value\(data, "siteName"\)\} â€” Noderyx`/);
+  assert.match(source, /export const title = \(data = \{\}\) => `\$\{value\(data, "siteName"\)\} — Noderyx`/);
 });
 
 test("loop and component variables compile to direct property access", () => {

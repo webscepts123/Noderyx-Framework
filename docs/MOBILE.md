@@ -8,7 +8,7 @@
 as Cool.css in a WebView, with native plugin access around them.
 
 Choose this path when you need a CSS feature the native translation does not
-cover â€” gradients, blur, complex animation â€” and are willing to pay for a
+cover — gradients, blur, complex animation — and are willing to pay for a
 WebView starting up.
 
 | | [`native:init`](NATIVE.md) | `mobile:init` (this page) |
@@ -53,8 +53,10 @@ tap transitions, browser history, device back navigation, focus, and reduced
 motion preferences.
 
 Source views use `.noderframe`; `.mnoderframe` is reserved for generated mobile
-route payloads. The entry and offline fallback are also `.mnoderframe`, so the
-generated mobile page collection contains no `.html` documents.
+route payloads. The bundle has exactly two `.html` files: `index.html`, a small
+shell that Capacitor opens (and serves for every deep link), which boots the
+router and draws the requested route; and `offline.html`, the service worker's
+offline fallback.
 
 Do not write or edit `.mnoderframe` files. They are machine-readable build
 artifacts under `platforms/mobile/www` and are hidden in VS Code by default.
@@ -104,9 +106,10 @@ export default {
     appName: "My App",
     views: "resources/views",
     public: "public",
-    entry: "home",                // the view that becomes index.html
+    entry: "home",                // the first screen the app shows
     out: "platforms/mobile",                // the bundle lands in mobile/www
     apiUrl: process.env.MOBILE_API_URL ?? null,
+    remoteUi: true,               // fetch UI published from the web app (needs apiUrl)
     data: { siteName: "My App" }, // render data shared by every page
     pages: {                      // extra render data per view
       "dashboards/admin": { title: "Admin" }
@@ -145,7 +148,7 @@ configuration in `android/app/src/main/res/xml/` for local testing.
 
 A packaged build runs from `capacitor://localhost` (iOS) or `https://localhost`
 (Android), so every API call is cross-origin. Your Noderyx server refuses those
-by default â€” allowlist them explicitly:
+by default — allowlist them explicitly:
 
 ```js
 const app = noderyx({
@@ -167,6 +170,119 @@ scripts, so `window.NODERYX_API_BASE` and the service worker registration ship
 as `public/noderyx-boot.js` rather than inline tags.
 
 See [security](SECURITY.md) for the rest.
+
+## Several apps from one project
+
+One backend often needs several apps: a customer app, an admin app, a partner
+or owner app. Declare them under `mobile.apps`. Each one gets its own screens,
+app ID, store listing, and Android/iOS projects, and they install side by side
+on the same phone. Anything an app does not set is shared from `mobile`.
+
+```js
+mobile: {
+  appId: "com.acme",
+  appName: "Acme",
+  apiUrl: process.env.MOBILE_API_URL ?? null,
+  data: { support: "help@acme.test" },          // shared by every app
+  apps: {
+    customer: { appId: "com.acme.customer", appName: "Acme" },
+    admin: { appId: "com.acme.admin", appName: "Acme Admin" },
+    partner: { appId: "com.acme.partner", appName: "Acme Partner",
+      data: { headline: "Your bookings" },      // merged over the shared data
+      native: { entry: "dashboard" } }          // overrides for build:native
+  }
+}
+```
+
+| | Default for app `admin` |
+| --- | --- |
+| Screens | `resources/mobile/admin/*.noderframe` |
+| Web bundle | `platforms/mobile/admin/www` |
+| Capacitor projects | `platforms/mobile/admin/android`, `platforms/mobile/admin/ios` |
+| Native project | `platforms/native/admin` |
+| App ID / name | `<mobile.appId>.admin` / `<mobile.appName> Admin` |
+
+Add `--app=<name>` to any mobile or native command. Builds without it build
+every app; commands that open or run one app ask you to choose.
+
+```bash
+noderyx mobile:app partner              # scaffold resources/mobile/partner
+noderyx mobile:apps                     # list apps, IDs, and platform folders
+noderyx build:mobile                    # build every app
+noderyx mobile:init android --app=admin
+noderyx mobile:run android --app=admin
+noderyx mobile:make reports --app=admin # add a screen to one app
+noderyx native:run android --app=customer
+```
+
+Each build points `capacitor.config.json` at the app it built, so always pass
+the same `--app` to the build and to the `cap` command that follows it. The
+`mobile:*` commands do this for you.
+
+## Change the UI from the web app
+
+Installed apps can take new screens, theme, text, and feature flags from your
+web server without a store release. `server.js` registers it:
+
+```js
+import { bearerToken, registerMobileUi } from "noderyx-framework";
+
+registerMobileUi(app, config, {
+  authorize: process.env.MOBILE_STUDIO_TOKEN ? bearerToken(process.env.MOBILE_STUDIO_TOKEN) : null
+});
+```
+
+Open **`/mobile-studio`** on the web app, pick an app, and edit:
+
+- **Theme**: primary, accent, background, surface, text, muted, border colours,
+  corner radius, and light or dark mode.
+- **Text and content**: values your views read as `{{name}}`, for example
+  `h1 "{{headline}}"`.
+- **Feature flags**: `{{flags.name}}` in views, `Noderyx.flags.name` in
+  scripts, and `native.flags` in native builds.
+
+**Publish to devices** saves the settings to `storage/mobile-ui/<app>.json`.
+Apps check for a newer version at launch and whenever they return to the
+foreground. The check is a single request that returns `204` when nothing
+changed. The last published UI is kept on the device, so the app still opens
+with it offline.
+
+What updates over the air:
+
+| | Capacitor build | Native build |
+| --- | --- | --- |
+| Theme, text, flags | Yes | Yes |
+| Screens edited in `resources/mobile/<app>` and deployed to the server | Yes | No (compiled into the app) |
+| New screens | Yes | No |
+| New native plugins or permissions | Store release | Store release |
+
+**Who can publish.** Reading the UI is public, since installed apps have no
+session. Writing calls `authorize(context)`. Without one, the studio is
+read-only. `bearerToken` checks a shared secret of 16 or more characters,
+which the studio asks for once per browser tab. To use your own sign-in
+instead, pass any function:
+
+```js
+registerMobileUi(app, config, {
+  authorize: ({ session }) => session.role === "admin"
+});
+```
+
+To keep settings in a database instead of files, pass
+`store: { get(app), set(app, settings) }`. Every value is validated before
+it is saved: colours must be hex, `rgb()`, or `hsl()`, and text must be
+plain values. A published screen that fails to open is discarded on the
+device, and the app falls back to its bundled copy.
+
+Turn the feature off for an app with `remoteUi: false`.
+
+The HTTP API, for your own tools:
+
+| Method | Path | |
+| --- | --- | --- |
+| GET | `/api/mobile/apps` | Apps and whether editing is enabled |
+| GET | `/api/mobile/<app>/ui[?since=<version>][&target=native]` | What devices download |
+| GET / PUT | `/api/mobile/<app>/settings` | Read or publish settings (authorized, CSRF-protected) |
 
 ## The native bridge
 
@@ -222,13 +338,13 @@ An app-style tab bar in `.noderframe`:
 ```text
 nav.cool-tabbar aria-label="Main"
   a href="/" aria-current="page"
-    span.cool-tabbar-icon "âŒ‚"
+    span.cool-tabbar-icon "⌂"
     span "Home"
   a href="/search"
-    span.cool-tabbar-icon "âŒ•"
+    span.cool-tabbar-icon "⌕"
     span "Search"
   a href="/profile"
-    span.cool-tabbar-icon "â—"
+    span.cool-tabbar-icon "◍"
     span "You"
 ```
 
@@ -282,7 +398,7 @@ npx capacitor-assets generate --iconBackgroundColor "#090B14"
 
 ## Shipping
 
-**Android** â€” open the project, then *Build â†’ Generate Signed Bundle / APK* and
+**Android** — open the project, then *Build → Generate Signed Bundle / APK* and
 choose *Android App Bundle* for Google Play:
 
 ```bash
@@ -291,8 +407,8 @@ noderyx mobile:open android
 
 Version numbers live in `android/app/build.gradle` (`versionCode`, `versionName`).
 
-**iOS** â€” on macOS, open the workspace, set your team under *Signing &
-Capabilities*, then *Product â†’ Archive*:
+**iOS** — on macOS, open the workspace, set your team under *Signing &
+Capabilities*, then *Product → Archive*:
 
 ```bash
 noderyx mobile:open ios

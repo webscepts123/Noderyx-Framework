@@ -119,6 +119,17 @@ export default {
     entry: "home",
     out: "platforms/mobile",
     apiUrl: process.env.MOBILE_API_URL ?? null,
+    // Installed apps fetch theme, text, flags, and screens published from the
+    // web app (Mobile Studio at /mobile-studio), so no store release is needed.
+    remoteUi: true,
+    // Several apps from one project. Each gets its own screens
+    // (resources/mobile/<name>), app ID, and Android/iOS projects under
+    // platforms/mobile/<name>. Add one with: noderyx mobile:app <name>
+    // apps: {
+    //   customer: { appId: "com.example.customer", appName: "Example" },
+    //   admin: { appId: "com.example.admin", appName: "Example Admin" },
+    //   partner: { appId: "com.example.partner", appName: "Example Partner" }
+    // },
     data: {
       siteName: process.env.SITE_NAME ?? "Noderyx",
       siteUrl: process.env.SITE_URL ?? "https://noderyx.app",

@@ -13,7 +13,26 @@ export { migrate, migrationStatus, rollback } from "./migrations.js";
 export { runSeeders } from "./seeders.js";
 export { Router } from "./router.js";
 export { HttpError } from "./errors.js";
-export { buildMobile, capacitorConfig, mobileOptions, webDirectory } from "./mobile.js";
+export {
+  buildMobile,
+  capacitorConfig,
+  compileMobilePages,
+  mobileAppConfig,
+  mobileApps,
+  mobileOptions,
+  platformDirectory,
+  webDirectory
+} from "./mobile.js";
+export {
+  bearerToken,
+  fileSettingsStore,
+  mobileUiApps,
+  mobileUiManifest,
+  nativeThemeStyles,
+  registerMobileUi,
+  themeCss,
+  validateSettings
+} from "./mobile-ui.js";
 export {
   buildCpanel,
   cpanelOptions,
