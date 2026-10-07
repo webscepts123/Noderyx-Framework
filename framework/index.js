@@ -4,6 +4,17 @@ export { clearCompilerCache, compile, compileFile, parse, interpolate } from "./
 export { renderHtml } from "./renderers/html.js";
 export { renderNative, NATIVE_COMPONENTS } from "./renderers/native.js";
 export { buildNative, themeModule } from "./native.js";
+export {
+  buildDesktop,
+  builderConfig,
+  desktopOptions,
+  desktopPackage,
+  desktopWorkflow,
+  mainProcess,
+  preloadScript,
+  DESKTOP_ORIGIN,
+  DESKTOP_TARGETS
+} from "./desktop.js";
 export { connect, mysql, postgres, mongo } from "./database.js";
 export { Model } from "./model.js";
 export { definePackage, loadPackages } from "./packages.js";

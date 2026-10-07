@@ -144,5 +144,14 @@ export default {
     out: "platforms/native",
     entry: "home",
     apiUrl: process.env.MOBILE_API_URL ?? null
+  },
+
+  // Windows and macOS apps: noderyx desktop:init
+  // App ID, name, views, and API URL fall back to the mobile block.
+  desktop: {
+    appId: process.env.DESKTOP_APP_ID ?? process.env.MOBILE_APP_ID ?? "com.noderyx.demo",
+    out: "platforms/desktop",
+    apiUrl: process.env.DESKTOP_API_URL ?? process.env.MOBILE_API_URL ?? null,
+    window: { width: 1200, height: 800, minWidth: 720, minHeight: 480 }
   }
 };

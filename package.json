@@ -1,6 +1,6 @@
 {
   "name": "noderyx-framework",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Noderyx Framework: a frontend-first template language, CSS toolkit, and Node.js backend framework, with browser-based cPanel deployment that needs no terminal.",
   "repository": {
     "type": "git",
@@ -51,7 +51,12 @@
     "native:init": "node framework/cli.js native:init",
     "native:android": "node framework/cli.js native:run android",
     "native:ios": "node framework/cli.js native:run ios",
-    "native:start": "node framework/cli.js native:start"
+    "native:start": "node framework/cli.js native:start",
+    "build:desktop": "node framework/cli.js build:desktop",
+    "desktop:init": "node framework/cli.js desktop:init",
+    "desktop:run": "node framework/cli.js desktop:run",
+    "desktop:windows": "node framework/cli.js desktop:package windows",
+    "desktop:mac": "node framework/cli.js desktop:package mac"
   },
   "keywords": [
     "web-framework",
@@ -74,6 +79,10 @@
     "react-native",
     "native",
     "cross-platform",
+    "desktop",
+    "electron",
+    "windows",
+    "macos",
     "saas",
     "ecommerce",
     "enterprise"

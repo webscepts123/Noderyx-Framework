@@ -2,8 +2,9 @@
  * Noderyx native bridge.
  *
  * One API for the browser, installed PWAs, and the Android/iOS builds produced
- * by `noderyx build:mobile`. Every call works on the web; when the page runs
- * inside the native shell the matching Capacitor plugin is used instead.
+ * by `noderyx build:mobile`, and the Windows/macOS apps from `build:desktop`.
+ * Every call works on the web; when the page runs inside the native shell the
+ * matching Capacitor plugin is used instead.
  *
  *   await Noderyx.native.share({ title: "Noderyx", url: location.href });
  *   await Noderyx.native.storage.set("token", "abc");
@@ -13,7 +14,10 @@
   const capacitor = () => globalThis.Capacitor ?? null;
   const plugin = (name) => capacitor()?.Plugins?.[name] ?? null;
   const isNative = Boolean(capacitor()?.isNativePlatform?.());
+  // Set by the desktop app's preload script: "windows", "macos", or "linux".
+  const desktop = globalThis.NoderyxDesktop ?? null;
   const platform = capacitor()?.getPlatform?.()
+    ?? desktop?.platform
     ?? (/android/i.test(navigator.userAgent)
       ? "android"
       : /iphone|ipad|ipod/i.test(navigator.userAgent) ? "ios" : "web");
@@ -95,6 +99,9 @@
     platform,
     get isAndroid() { return platform === "android"; },
     get isIOS() { return platform === "ios"; },
+    isDesktop: Boolean(desktop),
+    get isWindows() { return platform === "windows"; },
+    get isMacOS() { return platform === "macos"; },
 
     /** Resolves once the native shell (if any) has finished booting. */
     async ready() {
@@ -305,6 +312,7 @@
     const root = document.documentElement;
     root.dataset.platform = platform;
     root.classList.toggle("noderyx-native", isNative);
+    root.classList.toggle("noderyx-desktop", Boolean(desktop));
     root.classList.toggle("noderyx-standalone", Boolean(standalone) || isNative);
 
     if (!isNative) return;

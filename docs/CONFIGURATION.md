@@ -255,7 +255,9 @@ MOBILE_API_URL=https://api.example.com
 `MOBILE_APP_ID` must use reverse-domain format. A packaged or native app has no
 embedded Node.js server, so set `MOBILE_API_URL` to the deployed Noderyx API.
 
-See [Mobile](MOBILE.md) and [Native](NATIVE.md) for platform setup.
+See [Mobile](MOBILE.md), [Native](NATIVE.md), and [Desktop](DESKTOP.md) for
+platform setup. The `desktop` block falls back to the mobile settings, and
+`DESKTOP_APP_ID` and `DESKTOP_API_URL` override them for the desktop app.
 
 ## Typed environment helpers
 

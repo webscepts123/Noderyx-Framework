@@ -428,10 +428,13 @@ export async function buildMobile(config = {}, overrides = {}, log = console.log
   await writeFile(join(www, "offline.html"), offlinePage(options));
   // Older builds wrote the offline page as a payload the WebView cannot open.
   await rm(join(www, "offline.mnoderframe"), { force: true });
-  await writeFile(
-    resolve("capacitor.config.json"),
-    `${JSON.stringify(capacitorConfig(options), null, 2)}\n`
-  );
+  // The desktop build reuses this bundle and must not repoint Capacitor.
+  if (options.capacitor !== false) {
+    await writeFile(
+      resolve("capacitor.config.json"),
+      `${JSON.stringify(capacitorConfig(options), null, 2)}\n`
+    );
+  }
 
   const label = options.app ? ` [${options.app}]` : "";
   log(`Built${label} ${pages.size} page${pages.size === 1 ? "" : "s"} and ${assets} asset${assets === 1 ? "" : "s"} into ${relative(process.cwd(), www) || www}`);

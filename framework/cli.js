@@ -24,6 +24,7 @@ import {
   writeDeploymentKit
 } from "./cpanel.js";
 import { connect } from "./database.js";
+import { buildDesktop, DESKTOP_TARGETS, desktopOptions, desktopWorkflow } from "./desktop.js";
 import { migrate, migrationStatus, rollback } from "./migrations.js";
 import { buildMobile, mobileAppConfig, mobileApps, mobileOptions, platformDirectory, webDirectory } from "./mobile.js";
 import { buildNative, initNativeProject } from "./native.js";
@@ -589,6 +590,84 @@ async function mobileRun() {
   await run("npx", ["cap", "run", platform, ...(target ? ["--target", target] : [])]);
 }
 
+async function buildDesktopApp() {
+  return buildDesktop(await loadOptionalConfig(), {
+    ...(option("app-id") ? { appId: option("app-id") } : {}),
+    ...(option("app-name") ? { appName: option("app-name") } : {}),
+    ...(option("entry") ? { entry: option("entry") } : {}),
+    ...(option("views") ? { views: option("views") } : {}),
+    ...(option("out") ? { out: option("out") } : {}),
+    ...(option("api-url") ? { apiUrl: option("api-url") } : {}),
+    ...(option("live-reload") ? { liveReloadUrl: option("live-reload") } : {})
+  });
+}
+
+// Editors built on Electron (VS Code among them) can leak this into child
+// processes, and Electron then starts as plain Node with no window.
+function electronEnv() {
+  const { ELECTRON_RUN_AS_NODE: _ignored, ...env } = process.env;
+  return env;
+}
+
+function requireElectron(root) {
+  if (!existsSync(join(root, "node_modules/electron"))) {
+    throw new Error("Electron is not installed for the desktop app yet. Run: noderyx desktop:init");
+  }
+}
+
+// Electron and electron-builder live in the desktop project, not the web app,
+// so the server's dependencies stay small.
+async function desktopInit() {
+  const { root } = await buildDesktopApp();
+  if (!hasFlag("no-install")) {
+    if (existsSync(join(root, "package-lock.json"))) {
+      await run("npm", ["ci"], { cwd: root });
+    } else {
+      console.log("Installing Electron and electron-builder...");
+      await run("npm", ["install", "--save-dev", "electron", "electron-builder"], { cwd: root });
+    }
+  }
+  const folder = relative(process.cwd(), root).replaceAll("\\", "/");
+  console.log(`
+Desktop app is ready in ${folder}.
+
+  noderyx desktop:run                Build and open the app in a window
+  noderyx desktop:package windows    Windows installer (.exe) in ${folder}/dist
+  noderyx desktop:package mac        macOS disk image (.dmg), on a Mac
+  noderyx desktop:workflow           Build both on GitHub Actions
+
+Commit ${folder}/package.json and package-lock.json; www/, node_modules/, and dist/ are generated.`);
+}
+
+async function desktopRun() {
+  const { root } = await buildDesktopApp();
+  requireElectron(root);
+  await run("npx", ["electron", "."], { cwd: root, env: electronEnv() });
+}
+
+async function desktopPackage() {
+  const requested = positional().map((value) => value.toLowerCase())
+    .map((value) => (value === "win" ? "windows" : value === "macos" || value === "darwin" ? "mac" : value));
+  const host = Object.keys(DESKTOP_TARGETS).find((name) => DESKTOP_TARGETS[name].host === process.platform);
+  const targets = requested.includes("all") ? Object.keys(DESKTOP_TARGETS) : requested.length ? requested : [host];
+  for (const target of targets) {
+    if (!DESKTOP_TARGETS[target]) throw new Error(`Unknown desktop target: ${target} (use windows, mac, or linux)`);
+  }
+  if (targets.includes("mac") && process.platform !== "darwin") {
+    throw new Error("macOS apps can only be built and signed on a Mac. Run on macOS, or use: noderyx desktop:workflow");
+  }
+
+  const { root } = await buildDesktopApp();
+  requireElectron(root);
+  await run("npx", ["electron-builder", ...targets.map((target) => DESKTOP_TARGETS[target].flag), "--publish", "never"], { cwd: root, env: electronEnv() });
+  console.log(`Packaged ${targets.map((target) => DESKTOP_TARGETS[target].label).join(", ")} into ${relative(process.cwd(), join(root, "dist"))}`);
+}
+
+async function desktopWorkflowFile() {
+  const options = desktopOptions(await loadOptionalConfig());
+  await generate(resolve(".github/workflows"), "desktop.yml", desktopWorkflow(options));
+}
+
 function portAvailable(port, host) {
   return new Promise((done, fail) => {
     const probe = createNetServer();
@@ -1032,6 +1111,8 @@ async function scaffoldProject() {
         "**/node_modules": true,
         "platforms/mobile/www": true,
         "platforms/native": true,
+        "platforms/desktop/www": true,
+        "platforms/desktop/node_modules": true,
         "public/generated": true
       }
     }, null, 2)}\n`,
@@ -1058,6 +1139,11 @@ async function scaffoldProject() {
         "mobile:init": "noderyx-framework mobile:init",
         "mobile:android": "noderyx-framework mobile:run android",
         "mobile:ios": "noderyx-framework mobile:run ios",
+        "build:desktop": "noderyx-framework build:desktop",
+        "desktop:init": "noderyx-framework desktop:init",
+        "desktop:run": "noderyx-framework desktop:run",
+        "desktop:windows": "noderyx-framework desktop:package windows",
+        "desktop:mac": "noderyx-framework desktop:package mac",
         "editor:install": "noderyx-framework editor:install",
         migrate: "noderyx-framework migrate",
         seed: "noderyx-framework db:seed"
@@ -1309,6 +1395,13 @@ export default {
     entry: "home",
     // The app has no server of its own, so point it at yours.
     apiUrl: process.env.MOBILE_API_URL ?? null
+  },
+
+  // Windows and macOS apps: noderyx desktop:init
+  // App ID, name, views, and API URL fall back to the mobile block.
+  desktop: {
+    out: "platforms/desktop",
+    window: { width: 1200, height: 800, minWidth: 720, minHeight: 480 }
   }
 };
 `,
@@ -1444,6 +1537,9 @@ platforms/mobile/www/
 platforms/mobile/*/www/
 storage/mobile-ui/
 platforms/native/
+platforms/desktop/www/
+platforms/desktop/node_modules/
+platforms/desktop/dist/
 
 # Written on the server by deploy.sh; can hold a GitHub token
 deployment/deploy.config
@@ -1574,7 +1670,7 @@ npm run dev
     }
   }
 
-  console.log(`\nNext:\n  cd ${requested}\n  npm run dev\n\nFor Android and iOS:\n  npm run mobile:init\n  npm run mobile:android\n\nOn cPanel, once this is on GitHub:\n  bash ~/public_html/deployment/deploy.sh init\n  bash ~/public_html/deployment/deploy.sh\n\nA .env with its own APP_KEY was created. Keep it out of version control.`);
+  console.log(`\nNext:\n  cd ${requested}\n  npm run dev\n\nFor Android and iOS:\n  npm run mobile:init\n  npm run mobile:android\n\nFor Windows and macOS:\n  npm run desktop:init\n  npm run desktop:run\n\nOn cPanel, once this is on GitHub:\n  bash ~/public_html/deployment/deploy.sh init\n  bash ~/public_html/deployment/deploy.sh\n\nA .env with its own APP_KEY was created. Keep it out of version control.`);
 }
 
 async function makeController() {
@@ -1851,6 +1947,13 @@ Noderyx Framework CLI
   noderyx mobile:open <android|ios>
   noderyx mobile:run <android|ios> [--target=<device>] [--live-reload=http://192.168.1.10:3000]
 
+  Desktop apps for Windows and macOS (Electron)
+  noderyx desktop:init [--no-install]
+  noderyx desktop:run [--live-reload=http://localhost:3000]
+  noderyx desktop:package [windows] [mac] [linux] [all]           # mac requires macOS
+  noderyx build:desktop [--app-id=com.example.app] [--app-name=Name] [--api-url=https://...]
+  noderyx desktop:workflow                                        # GitHub Actions for both
+
   noderyx spark:key [--show] [--force]
   noderyx hash <password>
 
@@ -1900,6 +2003,11 @@ try {
     await sparkKey();
   }
   else if (command === "hash") await hashCommand();
+  else if (command === "build:desktop" || command === "desktop:build") await buildDesktopApp();
+  else if (command === "desktop:init") await desktopInit();
+  else if (command === "desktop:run" || command === "desktop:start") await desktopRun();
+  else if (command === "desktop:package" || command === "desktop:dist") await desktopPackage();
+  else if (command === "desktop:workflow") await desktopWorkflowFile();
   else if (command === "mobile:init") await mobileInit();
   else if (command === "mobile:add") await mobileAdd();
   else if (command === "mobile:sync") await mobileSync();

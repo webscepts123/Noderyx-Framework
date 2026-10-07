@@ -67,6 +67,21 @@ npx noderyx-framework@latest new shop --profile=ecommerce --database=mysql
 
 Full reference: [installation and project scaffolding](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/INSTALLATION.md).
 
+## New in 0.8.0
+
+- **Windows and macOS apps.** `npm run desktop:init` packages the same views
+  as a desktop app with Electron: a Windows installer, a macOS disk image, and
+  a GitHub Actions workflow that builds both. See
+  [desktop apps](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/DESKTOP.md).
+- **Live Mobile Studio preview.** `/mobile-studio` shows each screen at a real
+  phone width and updates as you type, with theme presets, validation before
+  publishing, Discard, and Ctrl+S to publish.
+- **Deploys that work from Windows.** `deploy.sh` repairs Windows line endings
+  on its own, recovers from a stale git checkout, falls back to the branch
+  tarball when git fails, and pulls private repositories through the API. The
+  browser panel can now pull, install dependencies with npm, run `deploy.sh`,
+  and roll back.
+
 ## New in 0.7.0
 
 - **One-command deploy.** Every project now ships a `deployment/` folder, so a
@@ -151,6 +166,7 @@ Details: [deployment/README.md](https://github.com/webscepts123/Noderyx-Framewor
 | Security | App key signing, CSRF, sessions, rate limiting, CORS, API keys, security profiles | [security](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/SECURITY.md) |
 | Quality audit | `npm run qa` checks templates, viewport metadata, titles, image alt text, accessible control names, internal links, and native-renderer support. `--strict` fails on warnings, `--json` for CI | [QA checks](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/QA.md) |
 | Mobile | Android and iOS from the same views, either real platform widgets or a packaged web build | [native](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/NATIVE.md), [mobile](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/MOBILE.md) |
+| Desktop | Windows installers and macOS apps from the same views, packaged with Electron | [desktop](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/DESKTOP.md) |
 | AI | Provider-neutral client for Claude and OpenAI, wired into the service container | [AI setup](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/AI.md) |
 | Packages | Local auto-discovered plugins plus published npm packages | [packages](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/PACKAGES.md) |
 | Deployment | cPanel from a browser, Docker, AWS, Procfile hosts | [cPanel](https://github.com/webscepts123/Noderyx-Framework/blob/main/deployment/cpanel/README.md) |
@@ -404,6 +420,21 @@ The website is separately installable as a PWA: the server serves
 page, so visitors can add it to the home screen and use it offline. Pass
 `pwa: false` to `noderyx()` to opt out. A WebView-packaged build is also
 available — see [packaged web app](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/MOBILE.md).
+
+## Windows and macOS
+
+The same views also ship as a desktop app: a Windows installer (`.exe`) and a
+macOS disk image (`.dmg`).
+
+```bash
+npm run desktop:init                 # install Electron in platforms/desktop
+npm run desktop:run                  # open the app in a window
+noderyx desktop:package windows      # platforms/desktop/dist/*.exe
+noderyx desktop:package mac          # .dmg, on a Mac
+noderyx desktop:workflow             # build both on GitHub Actions
+```
+
+See [desktop apps](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/DESKTOP.md).
 
 ## Framework commands
 

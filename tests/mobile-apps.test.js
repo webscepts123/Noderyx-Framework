@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { noderyx } from "../framework/app.js";
@@ -317,10 +318,44 @@ test("the studio ships its script and styles as same-origin files", async (t) =>
     const page = await (await fetch(`${base}/mobile-studio`)).text();
     assert.match(page, /src="\/mobile-studio\/studio\.js"/);
     assert.doesNotMatch(page, /<script>|style="|onclick=/);
+    assert.match(page, /<iframe[^>]+src="\/mobile-studio\/frame"[^>]+sandbox="allow-same-origin"/);
     const script = await fetch(`${base}/mobile-studio/studio.js`);
     assert.match(script.headers.get("content-type"), /javascript/);
     new Function(await script.text()); // parses
     const css = await fetch(`${base}/mobile-studio/studio.css`);
     assert.match(css.headers.get("content-type"), /text\/css/);
+    const frame = await fetch(`${base}/mobile-studio/frame`);
+    assert.match(frame.headers.get("content-type"), /text\/html/);
+    assert.doesNotMatch(await frame.text(), /<script/);
+  });
+});
+
+test("Mobile Studio previews unpublished text without saving it", async (t) => {
+  await withServer(t, { authorize: bearerToken(TOKEN) }, async (base, project) => {
+    const { jar, token } = await session(base);
+    const preview = (authorization, body) => fetch(`${base}/api/mobile/customer/preview`, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        cookie: jar,
+        "x-csrf-token": token,
+        ...(authorization ? { authorization } : {})
+      },
+      body: JSON.stringify(body)
+    });
+
+    assert.equal((await preview(null, { data: { headline: "Draft" } })).status, 401);
+    assert.equal((await preview(`Bearer ${TOKEN}`, { data: { "9bad": "x" } })).status, 422);
+
+    const response = await preview(`Bearer ${TOKEN}`, { data: { headline: "Draft headline" } });
+    assert.equal(response.status, 200);
+    const draft = await response.json();
+    assert.match(draft.pages.home, /Draft headline/);
+    assert.ok(draft.routes.includes(draft.entry));
+    assert.equal(existsSync(join(project, "storage/mobile-ui/customer.json")), false, "a preview is never stored");
+
+    const live = await (await fetch(`${base}/api/mobile/customer/ui`, { headers: { accept: "application/json" } })).json();
+    assert.doesNotMatch(live.pages.home, /Draft headline/);
   });
 });

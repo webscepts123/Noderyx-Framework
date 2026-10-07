@@ -241,6 +241,15 @@ Open **`/mobile-studio`** on the web app, pick an app, and edit:
 - **Feature flags**: `{{flags.name}}` in views, `Noderyx.flags.name` in
   scripts, and `native.flags` in native builds.
 
+The phone preview shows each screen at a real phone width (small, medium, or
+large) and updates as you type, so you can check a change before anyone sees
+it. Theme presets give you a starting palette, and fields with a problem are
+flagged before you can publish. Once unlocked, text and flag edits are
+previewed too: the studio sends them to `POST /api/mobile/<app>/preview`,
+which compiles the screens without saving anything. Links inside the preview
+switch screens. **Discard** returns to the published settings, and Ctrl+S
+publishes.
+
 **Publish to devices** saves the settings to `storage/mobile-ui/<app>.json`.
 Apps check for a newer version at launch and whenever they return to the
 foreground. The check is a single request that returns `204` when nothing

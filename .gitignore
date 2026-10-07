@@ -39,6 +39,9 @@ platforms/mobile/www/
 platforms/mobile/*/www/
 storage/mobile-ui/
 platforms/native/
+platforms/desktop/www/
+platforms/desktop/node_modules/
+platforms/desktop/dist/
 platforms/cpanel/
 
 # Written on the server by deploy.sh; can hold a GitHub token

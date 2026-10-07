@@ -174,6 +174,38 @@ test("Deploy script runs from a copy of itself, because a deploy rewrites it", (
   assert.doesNotMatch(script, /\r/);
 });
 
+test("Deploy script repairs CRLF line endings before bash reads past them", () => {
+  const script = deployShell({});
+  const lines = script.split("\n");
+  const heal = lines.findIndex((line) => line.includes("NODERYX_LF"));
+  assert.ok(heal > 0 && heal < lines.indexOf("set -uo pipefail"), "the CRLF repair must run first");
+  // The trailing # swallows the CR this very line carries when it is broken.
+  assert.match(lines[heal], /cmp -s - "\$0"/);
+  assert.match(lines[heal], /export NODERYX_LF=1 && exec bash "\$0" "\$@" #$/);
+});
+
+test("Deploy script recovers from a stale checkout and a failing git", () => {
+  const script = deployShell({ repository: "owner/repo" });
+  assert.match(script, /"\+refs\/heads\/\$BRANCH:refs\/remotes\/origin\/\$BRANCH"/);
+  assert.match(script, /export GIT_TERMINAL_PROMPT=0/);
+  assert.match(script, /if ! fetch_with_git; then/);
+  // A private repository's tarball comes through the API, which takes the token.
+  assert.match(script, /api\.github\.com\/repos\/\$REPOSITORY\/tarball\/\$BRANCH/);
+});
+
+test("Deploy panel pulls private repositories and installs dependencies", () => {
+  const php = deployPhp({ token: "tok123", repository: "owner/repo" });
+  assert.match(php, /api\.github\.com\/repos\//);
+  assert.match(php, /'Authorization: Bearer ' \. \$token/);
+  assert.match(php, /tmp\/github-token\.txt/);
+  assert.match(php, /\$action === 'install'/);
+  assert.match(php, /noderyx_install_if_changed\(\$messages, \$output\);/);
+  assert.match(php, /'--omit=dev', '--no-audit', '--no-fund'/);
+  // Only known deploy.sh commands can be run from the browser.
+  assert.match(php, /in_array\(\$arguments\[2\], \['deploy', 'install', 'rollback', 'status'\], true\)/);
+  assert.match(php, /array_map\('escapeshellarg', \$command\)/);
+});
+
 test("Deploy script keeps server-owned files and drops repository-only ones", () => {
   const script = deployShell({ user: "acct" });
   for (const kept of ['".env"', '".htaccess"', '"tmp/"', '"node_modules/"', '"deployment/deploy.config"']) {

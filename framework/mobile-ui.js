@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { HttpError } from "./errors.js";
 import { compileMobilePages, mobileAppConfig, mobileApps, mobileOptions } from "./mobile.js";
-import { STUDIO_CSS, STUDIO_JS, studioPage } from "./mobile-studio.js";
+import { STUDIO_CSS, STUDIO_FRAME, STUDIO_JS, studioPage } from "./mobile-studio.js";
 
 /**
  * Server-driven mobile UI.
@@ -270,12 +270,23 @@ export function registerMobileUi(app, config = {}, options = {}) {
     return context.json({ saved: true, app: name, version: manifest.version, settings });
   });
 
+  // Compile unpublished settings so Mobile Studio can preview text and flags
+  // before they reach any device. Nothing is stored.
+  app.post("/api/mobile/:app/preview", async (context) => {
+    await guard(context);
+    const name = known(context.params.app);
+    const settings = { ...validateSettings(context.body), updatedAt: null };
+    const { entry, routes, pages } = await mobileUiManifest(config, name, { settings });
+    return context.json({ entry, routes, pages });
+  });
+
   if (studio) {
     app.get(studio, ({ text, csrfToken }) => text(
       studioPage({ base: studio, csrfToken, appName: config.app?.name ?? "Noderyx" }),
       200,
       "text/html; charset=utf-8"
     ));
+    app.get(`${studio}/frame`, ({ text }) => text(STUDIO_FRAME, 200, "text/html; charset=utf-8"));
     app.get(`${studio}/studio.js`, ({ text }) => text(STUDIO_JS, 200, "text/javascript; charset=utf-8"));
     app.get(`${studio}/studio.css`, ({ text }) => text(STUDIO_CSS, 200, "text/css; charset=utf-8"));
   }

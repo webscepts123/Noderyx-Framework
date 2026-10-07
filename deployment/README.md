@@ -74,8 +74,22 @@ there:
 Commit that file. It comes from the repository like the rest of the
 application, so a change to it reaches the server with the next deploy.
 
+## From a browser
+
+`noderyx-deploy.php` does the same without a terminal: **Pull latest**
+downloads the branch and installs dependencies when `package.json` changed,
+**Install dependencies** runs `npm ci` with the account's Node binary, and the
+**Shell deploy** buttons run this script. A token saved under Source pulls a
+private repository. Installing and the script buttons need PHP to be allowed
+to start processes; the panel says whether it is.
+
 ## When it will not work
 
 No `git`, `curl`, or `wget` on the account: use `noderyx-deploy.php` in a
-browser. No `rsync`: files removed from the branch stay on disk, and the
-script says so. No `npm`: upload `node_modules` once, and deploys keep it.
+browser. If git fails, the script falls back to the branch tarball by itself.
+No `rsync`: files removed from the branch stay on disk, and the script says
+so. No `npm`: upload `node_modules` once, and deploys keep it.
+
+`$'\r': command not found` means the script was uploaded with Windows line
+endings. This version repairs itself on the first run; an older one can be
+fixed with `sed -i 's/\r$//' deployment/deploy.sh`.
