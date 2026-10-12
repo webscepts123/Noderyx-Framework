@@ -27,10 +27,21 @@ export class Router {
   patch(path, handler) { return this.add("PATCH", path, handler); }
 
   allowedMethods(pathname) {
-    return [...new Set(this.routes.filter((route) => route.regex.test(pathname)).map((route) => route.method))];
+    const methods = new Set(this.routes.filter((route) => route.regex.test(pathname)).map((route) => route.method));
+    if (methods.has("GET")) methods.add("HEAD");
+    return [...methods];
   }
 
   match(method, pathname) {
+    const found = this.find(method, pathname);
+    // HEAD is GET without a body (RFC 9110). Uptime monitors and domain
+    // validators probe with it, so every GET route answers it; send() and
+    // Node itself drop the body.
+    if (!found && method === "HEAD") return this.find("GET", pathname);
+    return found;
+  }
+
+  find(method, pathname) {
     for (const route of this.routes) {
       if (route.method !== method) continue;
       const match = pathname.match(route.regex);

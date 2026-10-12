@@ -5,9 +5,10 @@
 Releases publish to npm through GitHub OIDC with no long-lived npm token. See
 the [trusted publishing guide](https://github.com/webscepts123/Noderyx-Framework/blob/main/docs/PUBLISHING.md).
 
-> Editor icons: after installation, run `npx noderyx editor:install` and reload
-> VS Code. Use `--editor=cursor` or `--editor=vscodium` for those editors. Both
-> `.noderframe` and `.mnoderframe` then share the Noderyx file icon.
+> VS Code extension: **Noderyx Frames** (`noderyx.noderyx-language-support`).
+> After Marketplace publication, search for Noderyx Frames in Extensions and click
+> Install?no command required. Until then, use Install from VSIX or
+> `npx noderyx editor:install`. See [publishing instructions](tooling/editors/vscode/PUBLISHING.md).
 
 Noderyx Framework is an experimental frontend-first web language and Node.js framework.
 It has five parts:

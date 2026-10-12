@@ -348,6 +348,28 @@ test("strict request policy rejects ambiguous requests and returns correlation I
   });
 });
 
+test("HEAD answers every GET route with the same status and headers and no body", async () => {
+  await withServer({ security: { csrf: false } }, async (base, app) => {
+    app.get("/", ({ text }) => text("Home"));
+    app.post("/form", ({ json }) => json({ ok: true }));
+
+    const get = await fetch(`${base}/`);
+    const head = await fetch(`${base}/`, { method: "HEAD" });
+    assert.equal(head.status, 200);
+    assert.equal(head.headers.get("content-type"), get.headers.get("content-type"));
+    assert.equal(await head.text(), "");
+
+    const missing = await fetch(`${base}/missing`, { method: "HEAD" });
+    assert.equal(missing.status, 404);
+
+    // A POST-only route still refuses HEAD, and a GET route lists it.
+    const postOnly = await fetch(`${base}/form`, { method: "HEAD" });
+    assert.equal(postOnly.status, 405);
+    const refused = await fetch(`${base}/`, { method: "DELETE" });
+    assert.match(refused.headers.get("allow"), /\bHEAD\b/);
+  });
+});
+
 test("form input cannot reach Object.prototype", async () => {
   await withServer({ security: { csrf: false } }, async (base, app) => {
     app.post("/save", ({ json, body }) => json({ keys: Object.keys(body) }));

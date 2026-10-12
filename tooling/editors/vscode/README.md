@@ -35,31 +35,21 @@ language intelligence; the compiler and runtime are supplied by
 
 ## Installation
 
-After installing the Noderyx Framework, run:
+Once published to the Visual Studio Marketplace:
 
-```powershell
-npx noderyx editor:install
-```
+1. Open **Extensions** in VS Code (Ctrl+Shift+X).
+2. Search for **Noderyx Frames** by **noderyx**.
+3. Click **Install**.
 
-Cursor and VSCodium are supported too:
+No terminal command or framework installation is required for syntax highlighting.
+The extension identifier is `noderyx.noderyx-language-support`.
 
-```powershell
-npx noderyx editor:install --editor=cursor
-npx noderyx editor:install --editor=vscodium
-```
+For an unpublished build, use **Extensions > ... > Install from VSIX...** and
+select the packaged `.vsix` file, then reload if prompted.
 
-For manual installation, copy this directory to:
-
-```text
-%USERPROFILE%\.vscode\extensions\noderyx.noderyx-language-support-0.2.0
-```
-
-Reload the editor window after installation. The SVG at
-`icons/noderyx-file.svg` can also be reused by editors supporting custom file
-icon associations.
-
-New Noderyx projects include `.vscode/extensions.json`, allowing VS Code to
-recognize the workspace and recommend this package after it is published.
+New Noderyx projects recommend this extension through
+`.vscode/extensions.json`. Marketplace installation becomes available only
+after the publisher uploads and publishes the package.
 
 ## Identity
 
