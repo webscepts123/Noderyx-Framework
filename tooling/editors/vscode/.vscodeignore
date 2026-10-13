@@ -1,5 +1,9 @@
-PUBLISHING.md
-*.vsix
-node_modules/**
-package-lock.json
-.git/**
+**/*
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
+!language-configuration.json
+!icons/noderyx-extension.png
+!icons/noderyx-file.svg
+!syntaxes/noderframe.tmLanguage.json

@@ -1104,7 +1104,7 @@ async function scaffoldProject() {
 
   const files = {
     ".vscode/extensions.json": `${JSON.stringify({
-      recommendations: ["noderyx.noderyx-language-support"]
+      recommendations: ["Noderyxframework.noderyx-language-support"]
     }, null, 2)}\n`,
     ".vscode/settings.json": `${JSON.stringify({
       "files.exclude": {

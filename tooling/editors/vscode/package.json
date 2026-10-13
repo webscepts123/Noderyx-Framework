@@ -1,9 +1,9 @@
 {
   "name": "noderyx-language-support",
   "displayName": "Noderyx Frames",
-  "description": "Official Noderyx Framework language support, syntax highlighting, and file icons for .noderframe web views and .mnoderframe mobile frames.",
-  "version": "0.2.0",
-  "publisher": "noderyx",
+  "description": "Syntax highlighting and file icons for .noderframe web views and .mnoderframe mobile frames.",
+  "version": "0.2.1",
+  "publisher": "Noderyxframework",
   "icon": "icons/noderyx-extension.png",
   "license": "MIT",
   "keywords": [
@@ -53,7 +53,7 @@
     "type": "git",
     "url": "https://github.com/webscepts123/Noderyx-Framework.git"
   },
-  "homepage": "https://github.com/webscepts123/Noderyx-Framework#readme",
+  "homepage": "https://noderyxframework.com/",
   "bugs": {
     "url": "https://github.com/webscepts123/Noderyx-Framework/issues"
   }
