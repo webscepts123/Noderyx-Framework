@@ -158,7 +158,7 @@ for you.
 2. In cPanel File Manager, create an application folder such as `cool-app`,
    upload the ZIP there, and extract it.
 3. Open **Setup Node.js App** and select **Create Application**.
-4. Select production mode and Node.js 20 or newer.
+4. Select production mode and Node.js 26 or newer.
 5. Set the application root to `cool-app`.
 6. Select the domain or subdomain URL.
 7. Set the startup file to `server.js`.

@@ -37,7 +37,19 @@ function renderElement(node, context, data, depth, output) {
 
   const indent = "  ".repeat(depth);
   const open = `<${node.tag}${rendered}>`;
-  const content = interpolate(node.text, data, escapeHtml);
+  let content = interpolate(node.text, data, escapeHtml);
+  // Only local POST forms receive the session token. External actions must
+  // never receive credentials, including submit-button action overrides.
+  const action = String(attributes.action ?? "").replace(/[\u0000-\u0020]/g, "");
+  const localAction = !/^(?:[a-z][a-z0-9+.-]*:|[\\/]{2})/i.test(action) && !action.includes("\\");
+  const hasOverride = (nodes) => nodes.some((child) =>
+    child.attributes?.formaction !== undefined || hasOverride(child.children ?? []));
+  const hasToken = (nodes) => nodes.some((child) =>
+    child.attributes?.name === "_csrf" || hasToken(child.children ?? []));
+  if (node.tag === "form" && String(attributes.method).toLowerCase() === "post"
+      && localAction && data.csrfToken && !hasOverride(node.children) && !hasToken(node.children)) {
+    content += '<input type="hidden" name="_csrf" value="' + escapeHtml(data.csrfToken) + '">';
+  }
   const close = VOID_TAGS.has(node.tag) ? "" : `</${node.tag}>`;
 
   if (!node.children.length) {

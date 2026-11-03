@@ -188,8 +188,14 @@ test("project profiles tune generated production defaults", async () => {
     assert.equal(result.status, 0, result.stderr);
     const environment = await readFile(join(root, "market", ".env.example"), "utf8");
     assert.match(environment, /^APP_PROFILE=trading$/m);
+    assert.match(environment, /^SECURITY_PROFILE=trading$/m);
+    assert.match(environment, /^SESSION_MAX_AGE=3600$/m);
+    assert.match(environment, /^SESSION_SAME_SITE=Strict$/m);
+    const config = await readFile(join(root, "market", "noderyx.config.js"), "utf8");
+    assert.match(config, /\.\.\.selectedSecurity.session/);
+    assert.match(config, /\.\.\.selectedSecurity.rateLimit/);
     assert.match(environment, /^CACHE_MAX_ITEMS=4096$/m);
-    assert.match(environment, /^RATE_LIMIT_MAX=1200$/m);
+    assert.match(environment, /^RATE_LIMIT_MAX=120$/m);
     const readme = await readFile(join(root, "market", "README.md"), "utf8");
     assert.match(readme, /Trading platform/);
   } finally {

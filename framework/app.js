@@ -444,7 +444,7 @@ export class NoderyxApp {
             throw new Error(`View not found: ${view}${this.viewExtension}`);
           }
           // The CSRF token is always available to views as {{csrfToken}}.
-          let html = await compileFile(viewFile, { csrfToken: session.csrf, ...data });
+          let html = await compileFile(viewFile, { ...data, csrfToken: session.csrf });
           if (!this.production) html = injectLiveReload(html);
           this.send(
             response,
@@ -500,8 +500,12 @@ export class NoderyxApp {
       if (changed || (settings.rolling ?? true)) issue();
     };
 
-    const token = cookies[CSRF_COOKIE] ?? csrfToken(payload.sid, this.key);
-    if (!cookies[CSRF_COOKIE]) {
+    // Refresh tokens left behind by an expired session or a changed APP_KEY.
+    const validToken = verifyCsrf({ method: "POST", headers: { "x-csrf-token": cookies[CSRF_COOKIE] } }, {
+      cookies, sessionId: payload.sid, key: this.key
+    });
+    const token = validToken ? cookies[CSRF_COOKIE] : csrfToken(payload.sid, this.key);
+    if (!validToken) {
       response.locals.cookies.push(csrfCookie(token, settings));
     }
 

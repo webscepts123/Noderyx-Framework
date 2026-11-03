@@ -481,3 +481,92 @@ test("stack traces are withheld when errors are not exposed", async () => {
     assert.doesNotMatch(JSON.stringify(body), /secret internal detail/);
   });
 });
+
+test("a stale CSRF cookie is replaced after the session expires", async () => {
+  await withServer({}, async (base, app) => {
+    app.get("/", ({ text, csrfToken }) => text(csrfToken));
+    app.post("/save", ({ json }) => json({ saved: true }));
+    const stale = csrfToken("expired-session", KEY);
+    const first = await fetch(base, { headers: { cookie: `noderyx_csrf=${stale}` } });
+    const token = await first.text();
+    assert.notEqual(token, stale);
+    const jar = first.headers.getSetCookie().map(cookie => cookie.split(";")[0]).join("; ");
+    const response = await fetch(`${base}/save`, {
+      method: "POST",
+      headers: { cookie: jar, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ _csrf: token, value: "saved" })
+    });
+    assert.equal(response.status, 200);
+  });
+});
+
+test("local POST forms receive CSRF fields without leaking tokens to external actions", async () => {
+  const { compile } = await import("../framework/compiler.js");
+  const html = compile('form method="post" action="/save"\n  input name="title"', { csrfToken: "session-token" });
+  assert.match(html, /name="_csrf" value="session-token"/);
+  for (const action of ["https://example.com/save", "//example.com/save", "\\\\example.com/save"]) {
+    const external = compile(`form method="post" action="${action}"`, { csrfToken: "session-token" });
+    assert.doesNotMatch(external, /session-token/);
+  }
+  const explicit = compile('form method="post"\n  input type="hidden" name="_csrf" value="{{csrfToken}}"', { csrfToken: "session-token" });
+  assert.equal((explicit.match(/name="_csrf"/g) ?? []).length, 1);
+  assert.doesNotMatch(compile('form method="get"', { csrfToken: "session-token" }), /session-token/);
+});
+
+test("trading profile limits session lifetime and requires HTTPS in production", () => {
+  const profile = securityProfile("trading");
+  assert.equal(profile.enforceHttps, true);
+  assert.equal(profile.session.absoluteMaxAge, 3600);
+  assert.equal(profile.session.idleTimeout, 600);
+  assert.equal(profile.session.sameSite, "Strict");
+  assert.equal(profile.rateLimit.max, 120);
+});
+
+test("API credentials reject expired and invalid expiry values", async () => {
+  const credential = createApiKey();
+  for (const expiresAt of [new Date(Date.now() - 1000).toISOString(), "invalid"]) {
+    const middleware = requireApiKey({ lookup: async () => ({ hash: credential.hash, expiresAt }) });
+    await assert.rejects(middleware({
+      request: { headers: { authorization: `Bearer ${credential.token}` } },
+      abort(status) { throw new Error(String(status)); }
+    }, () => assert.fail("Expired key reached handler")), /401/);
+  }
+  let reached = false;
+  await requireApiKey({ lookup: async () => ({ hash: credential.hash, expiresAt: new Date(Date.now() + 60000).toISOString() }) })({
+    request: { headers: { authorization: `Bearer ${credential.token}` } },
+    abort() { assert.fail("Valid key rejected"); }
+  }, () => { reached = true; });
+  assert.equal(reached, true);
+});
+
+test("rate limiter capacity does not erase active clients' limits", () => {
+  const limiter = new RateLimiter({ max: 1, maxEntries: 2 });
+  assert.equal(limiter.check("first").allowed, true);
+  assert.equal(limiter.check("second").allowed, true);
+  assert.equal(limiter.check("third").allowed, false);
+  assert.equal(limiter.check("first").allowed, false);
+  assert.equal(limiter.hits.size, 2);
+});
+
+test("signed sessions reject missing identifiers and invalid expiry types", () => {
+  for (const payload of [{ exp: Date.now() }, { sid: {}, exp: Date.now() }, { sid: "id", exp: "99999999999" }]) {
+    const value = sign(Buffer.from(JSON.stringify(payload)).toString("base64url"), KEY, "session");
+    assert.equal(readSession({ noderyx_session: value }, KEY), null);
+  }
+});
+
+test("application config preserves selected security profile session controls", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const env = { ...process.env, SECURITY_PROFILE: "trading", NODE_ENV: "production" };
+  for (const key of ["SESSION_MAX_AGE", "SESSION_SAME_SITE", "SESSION_SECURE", "RATE_LIMIT_MAX", "REQUEST_BODY_LIMIT"]) delete env[key];
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", 'import config from "./noderyx.config.js"; console.log(JSON.stringify(config.security));'], { env, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const security = JSON.parse(result.stdout);
+  assert.equal(security.session.absoluteMaxAge, 3600);
+  assert.equal(security.session.idleTimeout, 600);
+  assert.equal(security.session.maxAge, 3600);
+  assert.equal(security.session.sameSite, "Strict");
+  assert.equal(security.session.secure, true);
+  assert.equal(security.rateLimit.max, 120);
+  assert.equal(security.bodyLimit, 262144);
+});

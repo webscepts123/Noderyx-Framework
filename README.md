@@ -22,7 +22,7 @@ It has five parts:
 
 ## Install
 
-Node.js 20 or newer. Nothing needs to be installed before you start a project —
+Node.js 26 or newer (latest LTS recommended). Nothing needs to be installed before you start a project —
 `npx` fetches the CLI for the one command that creates it:
 
 ```bash

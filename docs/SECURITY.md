@@ -194,7 +194,11 @@ security: { headers: { permissionsPolicy: "camera=(), microphone=(), geolocation
 Unsafe methods must present a token that is signed, bound to the current
 session, and matching the cookie. A missing or foreign token returns **419**.
 
-In a form:
+Local POST forms rendered from `.noderframe` views automatically receive a hidden
+`_csrf` field. External actions and forms with `formaction` overrides require
+explicit handling. Tokens left by expired sessions are refreshed on the next page load.
+
+You can also include the field explicitly:
 
 ```text
 form method="post" action="/posts"
@@ -365,3 +369,32 @@ report security issues in a public issue tracker.
 - [OWASP API Security Top 10 (2023)](https://owasp.org/API-Security/editions/2023/en/0x11-t10/) — particularly object/function authorization, authentication, resource consumption, configuration, inventory, and safe upstream API use.
 - [NIST SP 800-63B-4 (2025)](https://pages.nist.gov/800-63-4/sp800-63b.html) — authentication, password verifier, reauthentication, inactivity, and overall session requirements.
 - [PCI DSS v4.0.1 document library](https://www.pcisecuritystandards.org/document_library/?class=pcidss&doc=pci_dss) — the active payment-card security standard; applicability and validation require qualified assessment.
+
+### Trading security defaults
+
+New projects created with `--profile=trading` select `SECURITY_PROFILE=trading`.
+Existing projects can select it in `.env`; restart the server after changing it.
+The profile requires HTTPS in production, limits request bodies to 256 KiB,
+uses Strict SameSite session cookies, and enforces a one-hour absolute session
+lifetime with a ten-minute idle timeout. The default request budget is 120 per
+minute per client address. Environment overrides remain explicit overrides;
+remove old `SESSION_MAX_AGE`, `SESSION_SAME_SITE`, `RATE_LIMIT_MAX`, and
+`REQUEST_BODY_LIMIT` values when adopting the profile defaults.
+
+Generated and repository configs preserve the selected profile's nested session
+and rate-limit settings. Set `SESSION_SECURE=true` for HTTPS deployments. Only
+set `TRUST_PROXY=true` behind a trusted reverse proxy that overwrites forwarded
+headers and prevents direct access to the application port.
+
+`requireApiKey` accepts an optional credential `expiresAt` (an ISO date string or
+Unix epoch milliseconds). Expired or invalid expiry values are rejected. Keep
+credentials scoped and use the existing `revoked` field to revoke API access.
+Rate-limit storage rejects new client entries when full instead of discarding
+active clients' limits. This limiter is per process; multiple server instances
+need a shared limiter at the gateway.
+
+These controls do not implement trading account authorization, MFA, order
+idempotency, or transaction risk limits. Signed session cookies are readable by
+the client and cannot be centrally revoked; do not store secrets in them. Trading
+applications should verify account status and authorization server-side on every
+sensitive action.

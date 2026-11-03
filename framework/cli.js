@@ -1151,7 +1151,7 @@ async function scaffoldProject() {
       dependencies: {
         "noderyx-framework": frameworkDependency
       },
-      engines: { node: ">=20" }
+      engines: { node: ">=26" }
     }, null, 2) + "\n",
     "server.js": `import { ai, bearerToken, loadEnvironment, loadPackages, noderyx, registerMobileUi } from "noderyx-framework";
 import { fileURLToPath } from "node:url";
@@ -1265,6 +1265,7 @@ export class HomeController extends Controller {
 
 const type = (process.env.DB_TYPE ?? "${database}").toLowerCase();
 const profile = solutionProfile(process.env.APP_PROFILE ?? "${profile.name}");
+const selectedSecurity = securityProfile(process.env.SECURITY_PROFILE ?? profile.security.profile ?? "standard");
 const aiProviderName = (process.env.AI_PROVIDER ?? "openai").toLowerCase();
 const aiProvider = aiProviderName === "claude" ? "anthropic" : aiProviderName;
 const usingClaude = aiProvider === "anthropic";
@@ -1340,19 +1341,21 @@ export default {
   },
 
   security: {
-    ...securityProfile(process.env.SECURITY_PROFILE ?? "standard"),
+    ...selectedSecurity,
     appKey: process.env.APP_KEY,
     trustProxy: envBoolean("TRUST_PROXY", false),
-    bodyLimit: envNumber("REQUEST_BODY_LIMIT", profile.security.bodyLimit),
+    bodyLimit: envNumber("REQUEST_BODY_LIMIT", selectedSecurity.bodyLimit ?? profile.security.bodyLimit),
     cors: envList("CORS_ORIGINS"),
     rateLimit: {
-      windowMs: envNumber("RATE_LIMIT_WINDOW_MS", 60000),
-      max: envNumber("RATE_LIMIT_MAX", profile.security.rateLimitMax)
+      ...selectedSecurity.rateLimit,
+      windowMs: envNumber("RATE_LIMIT_WINDOW_MS", selectedSecurity.rateLimit.windowMs ?? 60000),
+      max: envNumber("RATE_LIMIT_MAX", selectedSecurity.rateLimit.max ?? profile.security.rateLimitMax)
     },
     session: {
+      ...selectedSecurity.session,
       name: process.env.SESSION_COOKIE ?? "noderyx_session",
-      maxAge: envNumber("SESSION_MAX_AGE", 604800),
-      sameSite: process.env.SESSION_SAME_SITE ?? "Lax",
+      maxAge: envNumber("SESSION_MAX_AGE", selectedSecurity.session.maxAge ?? 604800),
+      sameSite: process.env.SESSION_SAME_SITE ?? selectedSecurity.session.sameSite ?? "Lax",
       secure: envBoolean("SESSION_SECURE", process.env.NODE_ENV === "production")
     }
   },
@@ -1478,16 +1481,17 @@ MAIL_FROM_ADDRESS=hello@example.com
 MAIL_FROM_NAME="${requested}"
 
 # Security and sessions
-SECURITY_PROFILE=standard
+SECURITY_PROFILE=${profile.security.profile ?? "standard"}
 TRUST_PROXY=false
 CORS_ORIGINS=
 REQUEST_BODY_LIMIT=${profile.security.bodyLimit}
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_MAX=${profile.security.rateLimitMax}
 SESSION_COOKIE=noderyx_session
-SESSION_MAX_AGE=604800
-SESSION_SAME_SITE=Lax
-SESSION_SECURE=false
+SESSION_MAX_AGE=${profile.name === "trading" ? 3600 : 604800}
+SESSION_SAME_SITE=${profile.name === "trading" ? "Strict" : "Lax"}
+# Empty uses secure cookies in production and allows local HTTP development.
+SESSION_SECURE=
 
 # Mobile and native
 MOBILE_APP_ID=com.example.${requested.toLowerCase().replaceAll("-", "")}
@@ -1593,7 +1597,7 @@ Desktop.ini
 $RECYCLE.BIN/
 `,
     "Procfile": "web: node server.js\n",
-    "Dockerfile": `FROM node:24-alpine
+    "Dockerfile": `FROM node:26-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package*.json ./

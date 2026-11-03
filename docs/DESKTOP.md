@@ -13,7 +13,7 @@ phones, and on the desktop.
 
 ## Requirements
 
-- Node.js 20 or later.
+- Node.js 26 or later.
 - **Windows installer**: build on Windows. (macOS and Linux can build it too
   with Wine installed, but Windows is simpler.)
 - **macOS disk image**: build on a Mac. Apple only allows macOS apps to be built

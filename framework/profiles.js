@@ -9,7 +9,7 @@ const PROFILES = Object.freeze({
     label: "Trading platform",
     description: "A low-latency trading experience with live market data and secure APIs.",
     cache: { ttl: 30, maxItems: 4096, staticMaxAge: 86400, staleWhileRevalidate: 604800 },
-    security: { bodyLimit: 1048576, rateLimitMax: 1200 }
+    security: { profile: "trading", bodyLimit: 262144, rateLimitMax: 120 }
   },
   blog: {
     label: "Blog",

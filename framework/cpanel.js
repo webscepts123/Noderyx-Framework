@@ -63,6 +63,10 @@ const PROTECTED_FILES = [
 
 /** Node binaries commonly present on CloudLinux and cPanel hosts. */
 export const NODE_CANDIDATES = [
+  "/opt/alt/alt-nodejs26/root/usr/bin/node",
+  "/opt/cpanel/ea-nodejs26/bin/node",
+  "/opt/alt/alt-nodejs24/root/usr/bin/node",
+  "/opt/cpanel/ea-nodejs24/bin/node",
   "/opt/alt/alt-nodejs22/root/usr/bin/node",
   "/opt/alt/alt-nodejs20/root/usr/bin/node",
   "/opt/cpanel/ea-nodejs22/bin/node",

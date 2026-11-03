@@ -1,4 +1,7 @@
-import { envBoolean, envList, envNumber, securityProfile } from "./framework/index.js";
+import { envBoolean, envList, envNumber, securityProfile, solutionProfile } from "./framework/index.js";
+
+const profile = solutionProfile(process.env.APP_PROFILE ?? "saas");
+const selectedSecurity = securityProfile(process.env.SECURITY_PROFILE ?? profile.security.profile ?? "standard");
 
 const databaseType = (process.env.DB_TYPE ?? "mysql").toLowerCase();
 const aiProviderName = (process.env.AI_PROVIDER ?? "openai").toLowerCase();
@@ -94,19 +97,21 @@ export default {
   },
 
   security: {
-    ...securityProfile(process.env.SECURITY_PROFILE ?? "standard"),
+    ...selectedSecurity,
     appKey: process.env.APP_KEY,
     trustProxy: envBoolean("TRUST_PROXY", false),
-    bodyLimit: envNumber("REQUEST_BODY_LIMIT", 1048576),
+    bodyLimit: envNumber("REQUEST_BODY_LIMIT", selectedSecurity.bodyLimit ?? 1048576),
     cors: envList("CORS_ORIGINS"),
     rateLimit: {
-      windowMs: envNumber("RATE_LIMIT_WINDOW_MS", 60000),
-      max: envNumber("RATE_LIMIT_MAX", 300)
+      ...selectedSecurity.rateLimit,
+      windowMs: envNumber("RATE_LIMIT_WINDOW_MS", selectedSecurity.rateLimit.windowMs ?? 60000),
+      max: envNumber("RATE_LIMIT_MAX", selectedSecurity.rateLimit.max ?? 300)
     },
     session: {
+      ...selectedSecurity.session,
       name: process.env.SESSION_COOKIE ?? "noderyx_session",
-      maxAge: envNumber("SESSION_MAX_AGE", 604800),
-      sameSite: process.env.SESSION_SAME_SITE ?? "Lax",
+      maxAge: envNumber("SESSION_MAX_AGE", selectedSecurity.session.maxAge ?? 604800),
+      sameSite: process.env.SESSION_SAME_SITE ?? selectedSecurity.session.sameSite ?? "Lax",
       secure: envBoolean("SESSION_SECURE", process.env.NODE_ENV === "production")
     }
   },

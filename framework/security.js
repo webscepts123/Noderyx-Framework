@@ -76,6 +76,14 @@ const SECURITY_PROFILES = {
     rateLimit: { windowMs: 60_000, max: 120, maxEntries: 50_000 },
     headers: { frameAncestors: "'none'", hstsPreload: false }
   },
+  trading: {
+    bodyLimit: 256 * 1024,
+    enforceHttps: true,
+    request: { maxUrlLength: 2048, maxQueryParameters: 50, maxHeaderSize: 16384, requestTimeout: 15_000, headersTimeout: 10_000, requireContentType: true, rejectGetBody: true },
+    session: { maxAge: 60 * 60, absoluteMaxAge: 60 * 60, idleTimeout: 10 * 60, rolling: true, sameSite: "Strict", secure: true },
+    rateLimit: { windowMs: 60_000, max: 120, maxEntries: 50_000 },
+    headers: { frameAncestors: "'none'", referrerPolicy: "no-referrer" }
+  },
   banking: {
     bodyLimit: 256 * 1024,
     enforceHttps: true,
@@ -95,7 +103,7 @@ const SECURITY_PROFILES = {
 export function securityProfile(name = "standard", overrides = {}) {
   const key = String(name).toLowerCase();
   const base = SECURITY_PROFILES[key];
-  if (!base) throw new Error("Security profile must be standard, strict, or banking");
+  if (!base) throw new Error("Security profile must be standard, strict, trading, or banking");
   return {
     ...base,
     ...overrides,
@@ -133,7 +141,10 @@ export function requireApiKey(options = {}) {
     let hash;
     try { hash = hashApiKey(match[1]); } catch { return context.abort(401, "The API key is invalid"); }
     const credential = await options.lookup(hash);
-    if (!credential || credential.revoked || !verifyApiKey(match[1], credential.hash ?? hash)) {
+    const expiry = credential?.expiresAt == null ? null : new Date(credential.expiresAt).getTime();
+    if (!credential || credential.revoked
+        || (expiry !== null && (!Number.isFinite(expiry) || expiry <= Date.now()))
+        || !verifyApiKey(match[1], credential.hash ?? hash)) {
       return context.abort(401, "The API key is invalid");
     }
     const granted = new Set(credential.scopes ?? []);
@@ -248,8 +259,9 @@ export function readSession(cookies, key, options = {}) {
 
   try {
     const payload = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
-    if (!payload || typeof payload !== "object") return null;
-    if (typeof payload.exp !== "number" || payload.exp * 1000 < Date.now()) return null;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+    if (typeof payload.sid !== "string" || !payload.sid || !Number.isFinite(payload.exp)) return null;
+    if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) return null;
     const now = Math.floor(Date.now() / 1000);
     if (settings.absoluteMaxAge && (!payload.iat || payload.iat + settings.absoluteMaxAge < now)) return null;
     if (settings.idleTimeout && (!payload.last || payload.last + settings.idleTimeout < now)) return null;
@@ -533,6 +545,9 @@ export class RateLimiter {
     if (!entry || entry.reset <= now) {
       // Bound memory: an unbounded map is itself a denial-of-service vector.
       if (this.hits.size >= this.settings.maxEntries) this.sweep(now);
+      if (!entry && this.hits.size >= this.settings.maxEntries) {
+        return { allowed: false, remaining: 0, resetSeconds: Math.max(1, Math.ceil(this.settings.windowMs / 1000)) };
+      }
       const reset = now + this.settings.windowMs;
       this.hits.set(key, { count: cost, reset });
       return { allowed: cost <= this.settings.max, remaining: Math.max(0, this.settings.max - cost), resetSeconds: Math.ceil(this.settings.windowMs / 1000) };
@@ -550,11 +565,6 @@ export class RateLimiter {
   sweep(now = Date.now()) {
     for (const [key, entry] of this.hits) {
       if (entry.reset <= now) this.hits.delete(key);
-    }
-    // Still full of live entries: drop the oldest half rather than grow forever.
-    if (this.hits.size >= this.settings.maxEntries) {
-      const keys = [...this.hits.keys()].slice(0, Math.floor(this.hits.size / 2));
-      for (const key of keys) this.hits.delete(key);
     }
   }
 
